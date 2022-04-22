@@ -1,0 +1,3753 @@
+---
+title: "PEF(2.0)"
+author: "Aidan Cox"
+date: "11/27/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## LIBRARY LIST
+```{r Library, echo=FALSE}
+library(tidyverse)
+library(curl)
+library(readxl)
+library(writexl)
+library(PerformanceAnalytics)
+library(tools)
+library(ncdf4) # package for netcdf manipulation
+library(raster) # package for raster manipulation
+library(rgdal) # package for geospatial analysis
+library(dsmextra) # package for calculating model extrapolation
+library(magrittr)
+library(pROC) # package for calculating AUC of logistic regression models
+library(multcomp) # package for ANOVA post-hoc testing
+
+# GAMs #
+library(mgcv)
+
+# clustering
+library(cluster)
+library(factoextra)
+library(NbClust)
+
+# mapping
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(rgeos)
+library(ggspatial)
+library(sf)
+library(viridis)
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+islands <- st_read("~/Dropbox/PelagicEcosystemFunction_21/land_area.shp")
+transect <- st_read("~/Dropbox/PelagicEcosystemFunction_21/transect_line.shp")
+```
+
+## EXTRACTING TIDAL DATA
+
+Here is a list of the tide height and current stations within my study area and their locations:
+
+```{r Stations}
+## Current Prediction Stations for Consideration
+current_stations <- data.frame(
+  station = c("PCT1966", "PCT1971", "PUG1728", "PUG1727", "PUG1702", "PUG1730", "PCT2006", "PUG1729", "PCT2026", "PUG1731", "PUG1733", "PCT2046", "PUG1732", "PUG1704", "PUG1705", "PUG1706", "PCT2071", "PCT2076", "PCT2126", "PUG1707", "PUG1708", "PUG1712", "PCT1416", "PUG1742", "PUG1703", "PCT2191", "PUG1746", "PUG1745", "PUG1723", "PUG1721", "PUG1720", "PUG1719", "PUG1715", "PUG1722", "PUG1744", "PUG1724", "PUG1718", "PCT2266", "PUG1716", "PCT2281"),
+  location = c("Iceberg Pass", "Colville Island", "Point Colville", "Lawson Reef", "Rosario Strait", "Lopez Pass", "Burrows Bay", "Belle Rock", "Green Point", "Fontleroy Light", "Thatcher Pass", "Frost Willow Island", "Strawberry Island", "Peavine Pass", "Obstruction Pass", "Peapod Rocks", "Barnes Island", "Raccoon Island", "Towhead Island", "Sinclair Island", "Lawrence Point", "Parker Reef", "Cattle Point", "Cattle Point 2", "SJC South", "King's Point", "Pear Point", "Point George", "Upright Channel", "Wasp Passage", "Spring Passage", "Spieden Channel", "President Channel", "Harney Passage", "Discovery Island", "Lime Kiln", "Kellett Bluff", "John's Island", "Waldron Island", "Point Hammond" ),
+  latitude = c(48.3833, 48.4000, 48.4181, 48.4125, 48.4581, 48.4797, 48.4628, 48.4968, 48.5047, 48.5216, 48.5274, 48.5392, 48.5610, 48.5871, 48.6033, 48.6224, 48.6858, 48.6122, 48.6442, 48.6794, 48.7326, 48.4000, 48.3840, 48.4344, 48.4610, 48.4833, 48.5114, 48.5567, 48.5538, 48.5925, 48.6115, 48.6278, 48.6734, 48.5897, 48.4521, 48.4980, 48.5887, 48.6833, 48.7042, 48.7320 ),
+  longitude = c(-122.9167, -122.8167, -122.7812, -122.7403, -122.7501, - 122.8189, -122.6828, -122.7308, -122.7062, -122.7707, -122.8040, -122.8308, -122.7543, -122.8193, -122.8127, -122.7476, -122.7888, -122.7022, -122.6587, -122.7147, -122.8864, -123.0000, -123.0157, -122.9466, -122.9520, -122.9558, -122.9529, -122.9985, -122.9226, -122.9896, -123.0341, -123.1116, -123.0060, -122.9217, -123.1554, -123.1599, -123.2258, -123.1500, -123.1048, -123.0253)
+)
+
+## Map Station Locations
+ggplot() +
+  geom_sf(data = world, color = "black") +
+  coord_sf(xlim = c(-124, -122), ylim = c(48,49), expand = FALSE) +
+  
+  geom_point(data = current_stations, aes(longitude, latitude, color = location)) +
+  
+  xlab("Longitude") +
+  ylab("Latitude") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+# Tidal Data Extraction
+FOR INFORMATION ON NOAA CO-OPS API, READ: https://api.tidesandcurrents.noaa.gov/api/prod/
+
+Extract tide current predictions (knots) from 40 tidal current stations within the study area:
+
+```{r Tide Current Extraction}
+#The parts of the url to be assembled:
+url1 = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?begin_date="
+url2 = "&end_date="
+url3 = "&station=" #return stationId
+url4 = "&product=currents" #return product
+url5 = "&datum=mllw" #return datum
+url6 = "&units=metric" #return units
+url7 = "&time_zone=lst" #return time zone
+url8 = "&application=univer_washington" #return application
+url9 = "&format=csv" #return format
+### 
+
+stations = c("PCT1966", "PCT1971", "PUG1728", "PUG1727", "PUG1702", "PUG1730", "PCT2006", "PUG1729", "PCT2026", "PUG1731", "PUG1733", "PCT2046", "PUG1732", "PUG1704", "PUG1705", "PUG1706", "PCT2071", "PCT2076", "PCT2126", "PUG1707", "PUG1708", "PUG1712", "PCT1416", "PUG1742", "PUG1703", "PCT2191", "PUG1746", "PUG1745", "PUG1723", "PUG1721", "PUG1720", "PUG1719", "PUG1715", "PUG1722", "PUG1744", "PUG1724", "PUG1718", "PCT2266", "PUG1716", "PCT2281")
+
+## 2019
+dir <- "~/Desktop/PEF/Tides/2019" # set file-path
+
+# 2019 October - November
+for(i in 1:length(stations)) {
+  begin_date <- 20191020
+  end_date <- 20191120
+  assign(station, i)
+  urltotal <- paste(url1,begin_date,url2,end_date,url3,station,url4,url6,url7,url8,url9,sep ="")
+  filename <- paste("2019", stations[i], "oct-nov", sep = "_")
+  tmp <- tempfile(pattern = filename, tmpdir = dir, fileext = ".csv")
+  curl_download(urltotal, tmp)
+}
+
+# 2019 November - December
+for(i in 1:length(stations)) {
+  begin_date <- 20191121
+  end_date <- 20191210
+  assign(station, i)
+  urltotal <- paste(url1,begin_date,url2,end_date,url3,station,url4,url6,url7,url8,url9,sep ="")
+  filename <- paste("2019", stations[i], "nov-dec", sep = "_")
+  tmp <- tempfile(pattern = filename, tmpdir = dir, fileext = ".csv")
+  curl_download(urltotal, tmp)
+}
+
+## 2020
+dir <- "~/Desktop/PEF/Tides/2020"
+
+# 2020 October-November
+for(i in 1:length(stations)) {
+  begin_date <- 20201001
+  end_date <- 20201101
+  assign(station, i)
+  urltotal <- paste(url1,begin_date,url2,end_date,url3,station,url4,url6,url7,url8,url9,sep ="")
+  filename <- paste("2020", stations[i], "oct-nov", sep = "_")
+  tmp <- tempfile(pattern = filename, tmpdir = dir, fileext = ".csv")
+  curl_download(urltotal, tmp)
+}
+
+# 2020 November-December
+for(i in 1:length(stations)) {
+  begin_date <- 20201101
+  end_date <- 20201201
+  assign(station, i)
+  urltotal <- paste(url1,begin_date,url2,end_date,url3,station,url4,url6,url7,url8,url9,sep ="")
+  filename <- paste("2020", stations[i], "nov-dec", sep = "_")
+  tmp <- tempfile(pattern = filename, tmpdir = dir, fileext = ".csv")
+  curl_download(urltotal, tmp)
+}
+
+## 2021
+dir <- "~/Desktop/PEF/Tides/2021"
+
+# 2021 October-November
+for(i in 1:length(stations)) {
+  begin_date <- 20211001
+  end_date <- 20211101
+  assign(station, i)
+  urltotal <- paste(url1,begin_date,url2,end_date,url3,station,url4,url6,url7,url8,url9,sep ="")
+  filename <- paste("2021", stations[i], "oct-nov", sep = "_")
+  tmp <- tempfile(pattern = filename, tmpdir = dir, fileext = ".csv")
+  curl_download(urltotal, tmp)
+}
+
+# 2021 November-December
+for(i in 1:length(stations)) {
+  begin_date <- 20211101
+  end_date <- 20211201
+  assign(station, i)
+  urltotal <- paste(url1,begin_date,url2,end_date,url3,station,url4,url6,url7,url8,url9,sep ="")
+  filename <- paste("2021", stations[i], "nov-dec", sep = "_")
+  tmp <- tempfile(pattern = filename, tmpdir = dir, fileext = ".csv")
+  curl_download(urltotal, tmp)
+}
+```
+
+# Format Tidal Current CSVs
+Take raw tidal current data from NOAA and calculate the daily amplitude of tidal current:
+```{r Format Current CSV, echo=FALSE}
+## 2019 ##
+fList <- list.files("~/Desktop/PEF/Tides/2019/", full.names = T) # update with file path from chunk 4
+
+current_amplitudes_2019 <- data.frame() 
+
+for(i in 1:length(fList)) {
+  currents <- read_csv(fList[i]) 
+  currents <- currents %>% mutate(
+    DateTime = `Date_Time (LST/LDT)`
+  )
+  currents <- currents %>% separate(DateTime, into = c("Date", "Time"), sep = "([ ])")
+  currents <- currents %>% separate(Date, into = c("Year", "Month", "Day"), sep = "([-])")
+  currents <- currents %>% filter(Month == 10 | Month == 11) # select only data from October and November
+  currents <- currents %>% filter(`Speed (knots)` != "-")
+  currents$`Speed (knots)` <- as.numeric(currents$`Speed (knots)`)
+  currents <- currents %>% group_by(Month, Day, Event) %>%
+    top_n(1, abs(`Speed (knots)`))
+  currents <- currents %>% dplyr::select(
+    Year, Month, Day, Event, `Speed (knots)`
+  )
+  currents <- distinct(currents)
+  currents$`Speed (knots)` <- abs(currents$`Speed (knots)`)
+  currents <- currents %>% group_by(Month, Day) %>%
+    mutate(Amplitude = `Speed (knots)` + lag(`Speed (knots)`))
+  currents$Station <- fList[i]
+  currents <- currents %>% separate(Station, into = c("Trash1", "Trash2", "Trash3", "Trash4", "Trash5", "Trash6", "Trash7", "Trash8", "Station"), sep = "([/])")
+  currents <- currents %>% separate(Station, into = c("Station", "Trash9", "Trash10", "Trash11"), sep = "([_])")
+  currents <- currents %>% dplyr::select(Year, Month, Day, Amplitude, Station)
+  currents <- currents %>% filter(Amplitude != 0)
+  name <- paste(currents[1,1], currents[1,5], sep = "_")
+  #name <- paste(currents[1,1], currents[1,5], sep = "_")
+  #write_csv(currents, paste("~/Desktop/PEF/2019/", name, ".csv", sep = ""))
+  currents <- ungroup(currents)
+  current_amplitudes_2019 <- rbind(currents, current_amplitudes_2019) # update with year x2
+  rm(currents, name)
+  print(i)
+}
+current_amplitudes_2019$Year <- "2019" 
+
+## 2020 ##
+fList <- list.files("~/Desktop/PEF/Tides/2020/", full.names = T) # update with file path from chunk 4
+
+current_amplitudes_2020 <- data.frame() 
+
+for(i in 1:length(fList)) {
+  currents <- read_csv(fList[i]) 
+  currents <- currents %>% mutate(
+    DateTime = `Date_Time (LST/LDT)`
+  )
+  currents <- currents %>% separate(DateTime, into = c("Date", "Time"), sep = "([ ])")
+  currents <- currents %>% separate(Date, into = c("Year", "Month", "Day"), sep = "([-])")
+  currents <- currents %>% filter(Month == 10 | Month == 11) # select only data from October and November
+  currents <- currents %>% filter(`Speed (knots)` != "-")
+  currents$`Speed (knots)` <- as.numeric(currents$`Speed (knots)`)
+  currents <- currents %>% group_by(Month, Day, Event) %>%
+    top_n(1, abs(`Speed (knots)`))
+  currents <- currents %>% dplyr::select(
+    Year, Month, Day, Event, `Speed (knots)`
+  )
+  currents <- distinct(currents)
+  currents$`Speed (knots)` <- abs(currents$`Speed (knots)`)
+  currents <- currents %>% group_by(Month, Day) %>%
+    mutate(Amplitude = `Speed (knots)` + lag(`Speed (knots)`))
+  currents$Station <- fList[i]
+  currents <- currents %>% separate(Station, into = c("Trash1", "Trash2", "Trash3", "Trash4", "Trash5", "Trash6", "Trash7", "Trash8", "Station"), sep = "([/])")
+  currents <- currents %>% separate(Station, into = c("Station", "Trash9", "Trash10", "Trash11"), sep = "([_])")
+  currents <- currents %>% dplyr::select(Year, Month, Day, Amplitude, Station)
+  currents <- currents %>% filter(Amplitude != 0)
+  name <- paste(currents[1,1], currents[1,5], sep = "_")
+  #name <- paste(currents[1,1], currents[1,5], sep = "_")
+  #write_csv(currents, paste("~/Desktop/PEF/2020/", name, ".csv", sep = ""))
+  currents <- ungroup(currents)
+  current_amplitudes_2020 <- rbind(currents, current_amplitudes_2020) # update with year x2
+  rm(currents, name)
+  print(i)
+}
+current_amplitudes_2020$Year <- "2020" 
+
+## 2021 ##
+fList <- list.files("~/Desktop/PEF/Tides/2021/", full.names = T) # update with file path from chunk 4
+
+current_amplitudes_2021 <- data.frame() 
+
+for(i in 1:length(fList)) {
+  currents <- read_csv(fList[i]) 
+  currents <- currents %>% mutate(
+    DateTime = `Date_Time (LST/LDT)`
+  )
+  currents <- currents %>% separate(DateTime, into = c("Date", "Time"), sep = "([ ])")
+  currents <- currents %>% separate(Date, into = c("Year", "Month", "Day"), sep = "([-])")
+  currents <- currents %>% filter(Month == 10 | Month == 11) # select only data from October and November
+  currents <- currents %>% filter(`Speed (knots)` != "-")
+  currents$`Speed (knots)` <- as.numeric(currents$`Speed (knots)`)
+  currents <- currents %>% group_by(Month, Day, Event) %>%
+    top_n(1, abs(`Speed (knots)`))
+  currents <- currents %>% dplyr::select(
+    Year, Month, Day, Event, `Speed (knots)`
+  )
+  currents <- distinct(currents)
+  currents$`Speed (knots)` <- abs(currents$`Speed (knots)`)
+  currents <- currents %>% group_by(Month, Day) %>%
+    mutate(Amplitude = `Speed (knots)` + lag(`Speed (knots)`))
+  currents$Station <- fList[i]
+  currents <- currents %>% separate(Station, into = c("Trash1", "Trash2", "Trash3", "Trash4", "Trash5", "Trash6", "Trash7", "Trash8", "Station"), sep = "([/])")
+  currents <- currents %>% separate(Station, into = c("Station", "Trash9", "Trash10", "Trash11"), sep = "([_])")
+  currents <- currents %>% dplyr::select(Year, Month, Day, Amplitude, Station)
+  currents <- currents %>% filter(Amplitude != 0)
+  name <- paste(currents[1,1], currents[1,5], sep = "_")
+  #name <- paste(currents[1,1], currents[1,5], sep = "_")
+  #write_csv(currents, paste("~/Desktop/PEF/2021/", name, ".csv", sep = ""))
+  currents <- ungroup(currents)
+  current_amplitudes_2021 <- rbind(currents, current_amplitudes_2021) # update with year x2
+  rm(currents, name)
+  print(i)
+}
+
+current_amplitudes_2021$Year <- "2021" 
+```
+
+# Explore Correlations Between Data from Current Stations across years
+Read this for a helpful reminder on ANOVA : http://www.sthda.com/english/wiki/one-way-anova-test-in-r
+
+This code compares current data from matching stations from 2019, 2020, and 2021 to make sure that annual variability in current speeds is not significant:
+
+```{r Tide Proxy Exploration}
+proxy <- rbind(current_amplitudes_2019, current_amplitudes_2020, current_amplitudes_2021)
+
+proxy$Year <- factor(proxy$Year)
+
+# visually compare the data
+ggplot(data = proxy) +
+  geom_point(aes(x = Station, y = Amplitude, color = Year)) +
+  coord_flip() +
+  theme_classic() 
+
+proxy %>% group_by(Year) %>%
+  summarise(
+    count = n(),
+    mean = mean(Amplitude, na.rm = TRUE),
+    sd = sd(Annual.Mean.Current, na.rm = TRUE)
+  )
+
+# ANOVA between years
+tide.aov <- aov(Amplitude ~ Year, data = proxy)
+summary(tide.aov)
+
+rm(proxy, tide.aov) #cleanup
+
+```
+Based on these results, we can conclude that there is no significant difference between the seasonal average of tidal current amplitude across our study area
+
+# Compile data from 2019-2020 by station
+Calculate the average between 2019-2020 of the seasonal average value of tidal current amplitude at each current prediction station:
+
+```{r 2019-2021 Seasonal Current Proxy}
+tcur <- rbind(current_amplitudes_2019, current_amplitudes_2020, current_amplitudes_2021)
+tcur <- tcur %>% group_by(Station) %>% summarise(tcur = mean(Amplitude))
+```
+
+## TIDE HEIGHT CHANGE EXTRACTION
+```{r Delta Tide Height}
+# 2017
+delta_2017_10 <- read_csv("~/Desktop/PEF/Tide_Height/Formatted/2017/2017_10_9449880.csv")
+delta_2017_11 <- read_csv("~/Desktop/PEF/Tide_Height/Formatted/2017/2017_11_9449880.csv")
+delta_2017 <- rbind(delta_2017_10, delta_2017_11)
+rm(delta_2017_10, delta_2017_11)
+delta_2017 <- delta_2017 %>% mutate(Date = paste(Year, Month, Day, sep = "-"))
+delta_2017$Date <- lubridate::ymd(delta_2017$Date)
+
+# 2018
+delta_2018_10 <- read_csv("~/Desktop/PEF/Tide_Height/Formatted/2018/2018_10_9449880.csv")
+delta_2018_11 <- read_csv("~/Desktop/PEF/Tide_Height/Formatted/2018/2018_11_9449880.csv")
+delta_2018 <- rbind(delta_2018_10, delta_2018_11)
+rm(delta_2018_10, delta_2018_11)
+delta_2018 <- delta_2018 %>% mutate(Date = paste(Year, Month, Day, sep = "-"))
+delta_2018$Date <- lubridate::ymd(delta_2018$Date)
+
+# 2019
+delta_2019_10 <- read_csv("~/Desktop/PEF/Tide_Height/Formatted/2019/2019_10_9449880.csv")
+delta_2019_11 <- read_csv("~/Desktop/PEF/Tide_Height/Formatted/2019/2019_11_9449880.csv")
+delta_2019 <- rbind(delta_2019_10, delta_2019_11)
+rm(delta_2019_10, delta_2019_11)
+delta_2019 <- delta_2019 %>% mutate(Date = paste(Year, Month, Day, sep = "-"))
+delta_2019$Date <- lubridate::ymd(delta_2019$Date)
+
+# 2020
+delta_2020_10 <- read_csv("~/Desktop/PEF/Tide_Height/Formatted/2020/2020_10_9449880.csv")
+delta_2020_11 <- read_csv("~/Desktop/PEF/Tide_Height/Formatted/2020/2020_11_9449880.csv")
+delta_2020 <- rbind(delta_2020_10, delta_2020_11)
+rm(delta_2020_10, delta_2020_11)
+delta_2020 <- delta_2020 %>% mutate(Date = paste(Year, Month, Day, sep = "-"))
+delta_2020$Date <- lubridate::ymd(delta_2020$Date)
+
+# 2021
+delta_2021_10 <- read_csv("~/Desktop/PEF/Tide_Height/Formatted/2021/2021_10_9449880.csv")
+delta_2021_11 <- read_csv("~/Desktop/PEF/Tide_Height/Formatted/2021/2021_11_9449880.csv")
+delta_2021 <- rbind(delta_2021_10, delta_2021_11)
+rm(delta_2021_10, delta_2021_11)
+delta_2021 <- delta_2021 %>% mutate(Date = paste(Year, Month, Day, sep = "-"))
+delta_2021$Date <- lubridate::ymd(delta_2021$Date)
+delta_2021 <- delta_2021 %>% dplyr::rename(Station = Tide_Station)
+
+delta.tide.height <- rbind(delta_2017, delta_2018, delta_2019, delta_2020, delta_2021)
+rm(delta_2017, delta_2018, delta_2019, delta_2020, delta_2021)
+
+```
+
+## EXTRACTING LIVEOCEAN DATA
+
+Open the netcdf files containing model data and read in the layers containing variables of interest:
+```{r Open NetCDF File and Format Arrays}
+nc_data <- nc_open("~/Dropbox/PelagicEcosystemFunction_21/cox_surf_2017.01.01_2021.10.30.nc")
+
+lon <- ncvar_get(nc_data, "lon_rho")
+lat <- ncvar_get(nc_data, "lat_rho")
+t <- ncvar_get(nc_data, "ocean_time")
+
+phyto.array <- ncvar_get(nc_data, "phytoplankton")
+temp.array <- ncvar_get(nc_data, "temp")
+sal.array <- ncvar_get(nc_data, "salt")
+
+dim(phyto.array) # check the dimensions of the array, expected: 72(x) x 75(y) x 1764 days
+
+# find out what value is input for misssing data
+fillvalue <- ncatt_get(nc_data, "phytoplankton", "_FillValue")
+phyto.array[phyto.array == fillvalue$value] <- NA
+
+fillvalue <- ncatt_get(nc_data, "temp", "_FillValue")
+temp.array[temp.array == fillvalue$value] <- NA
+
+fillvalue <- ncatt_get(nc_data, "salt", "_FillValue")
+sal.array[sal.array == fillvalue$value] <- NA
+
+# close the NETCDF file
+nc_close(nc_data) 
+```
+
+Determine spatial points used by the model and where they fall in the study grid:
+```{r Apply LiveOcean points to study grid}
+# get model points for extraction from LiveOcean #
+extraction_points <- data.frame (
+  longitude = c(lon),
+  latitude = c(lat)
+)
+
+# read in file with LiveOcean points by study grid cell
+LiveOcean_grid <- read.csv("~/Dropbox/PelagicEcosystemFunction_21/LiveOcean_pts(grid).csv")
+LiveOcean_grid <- LiveOcean_grid %>% dplyr::select(c(point, latitude, longitude, grid_id))
+LiveOcean_grid <- LiveOcean_grid %>% rename(
+  lat = latitude,
+  lon = longitude
+)
+```
+
+Use points from previous chunk to extract data from NetCDF arrays:
+```{r LiveOcean Extraction: PHYTOPLANKTON, echo=FALSE}
+r_brick <- brick(phyto.array, xmn=min(lat), xmx=max(lat), ymn=min(lon), ymx=max(lon), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+# correct the orrientation of the raster brick
+r_brick <- flip(t(r_brick), direction='y')
+
+# extracting points from the brick
+phyto_2017 <- data.frame()
+phyto_2018 <- data.frame()
+phyto_2019 <- data.frame()
+phyto_2020 <- data.frame()
+phyto_2021 <- data.frame()
+
+for(i in 1:nrow(extraction_points)) {
+  point_series <- raster::extract(r_brick, extraction_points[i,], method='simple')
+  data <- data.frame(
+    point = c(rep(i, times = 1764)),
+    lat = rep(extraction_points[i,2], times = 1764), 
+    lon = rep(extraction_points[i,1], times = 1764), 
+    ocean_time = c(seq(1,1764)),
+    phyto = c(point_series)
+  )
+  data17 <- data %>% filter(ocean_time >= 274 & ocean_time <= 334)
+  data18 <- data %>% filter(ocean_time >= 639 & ocean_time <= 699)
+  data19 <- data %>% filter(ocean_time >= 1004 & ocean_time <= 1064)
+  data20 <- data %>% filter(ocean_time >= 1370 & ocean_time <= 1430)
+  data21 <- data %>% filter(ocean_time >= 1735 & ocean_time <= 1764)
+  phyto_2017 <- rbind(phyto_2017, data17)
+  phyto_2018 <- rbind(phyto_2018, data18)
+  phyto_2019 <- rbind(phyto_2019, data19)
+  phyto_2020 <- rbind(phyto_2020, data20)
+  phyto_2021 <- rbind(phyto_2021, data21)
+  rm(data, data17, data18, data21, data19, data20)
+  print(i)
+}
+
+# cleanup and formatting
+phyto_2017 <- phyto_2017 %>% filter(!is.na(phyto))
+phyto_2018 <- phyto_2018 %>% filter(!is.na(phyto))
+phyto_2019 <- phyto_2019 %>% filter(!is.na(phyto))
+phyto_2020 <- phyto_2020 %>% filter(!is.na(phyto))
+phyto_2021 <- phyto_2021 %>% filter(!is.na(phyto))
+
+phyto_2017 <- inner_join(phyto_2017, LiveOcean_grid, by = "point")
+phyto_2018 <- inner_join(phyto_2018, LiveOcean_grid, by = "point")
+phyto_2019 <- inner_join(phyto_2019, LiveOcean_grid, by = "point")
+phyto_2020 <- inner_join(phyto_2020, LiveOcean_grid, by = "point")
+phyto_2021 <- inner_join(phyto_2021, LiveOcean_grid, by = "point")
+
+phyto_2017 <- phyto_2017 %>% filter(!is.na(grid_id))
+phyto_2018 <- phyto_2018 %>% filter(!is.na(grid_id))
+phyto_2019 <- phyto_2019 %>% filter(!is.na(grid_id))
+phyto_2020 <- phyto_2020 %>% filter(!is.na(grid_id))
+phyto_2021 <- phyto_2021 %>% filter(!is.na(grid_id))
+
+rm(r_brick) #cleanup
+```
+
+```{r LiveOcean Extraction: SEA SURFACE TEMPERATURE, echo = FALSE}
+temp_brick <- brick(temp.array, xmn=min(lat), xmx=max(lat), ymn=min(lon), ymx=max(lon), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+# correct the orrientation of the raster brick
+temp_brick <- flip(t(temp_brick), direction='y')
+
+temp_2017 <- data.frame()
+temp_2018 <- data.frame()
+temp_2019 <- data.frame()
+temp_2020 <- data.frame()
+temp_2021 <- data.frame()
+
+for(i in 1:nrow(extraction_points)) {
+  point_series <- raster::extract(temp_brick, extraction_points[i,], method='simple')
+  data <- data.frame(
+    point = c(rep(i, times = 1764)),
+    lat = rep(extraction_points[i,2], times = 1764), 
+    lon = rep(extraction_points[i,1], times = 1764), 
+    ocean_time = c(seq(1,1764)),
+    temp = c(point_series)
+  )
+  data17 <- data %>% filter(ocean_time >= 274 & ocean_time <= 334)
+  data18 <- data %>% filter(ocean_time >= 639 & ocean_time <= 699)
+  data19 <- data %>% filter(ocean_time >= 1004 & ocean_time <= 1064)
+  data20 <- data %>% filter(ocean_time >= 1370 & ocean_time <= 1430)
+  data21 <- data %>% filter(ocean_time >= 1735 & ocean_time <= 1764)
+  temp_2017 <- rbind(temp_2017, data17)
+  temp_2018 <- rbind(temp_2018, data18)
+  temp_2019 <- rbind(temp_2019, data19)
+  temp_2020 <- rbind(temp_2020, data20)
+  temp_2021 <- rbind(temp_2021, data21)
+  rm(data, data17, data18, data21, data19, data20)
+  print(i)
+}
+
+# cleanup and formatting
+temp_2017 <- temp_2017 %>% filter(!is.na(temp))
+temp_2018 <- temp_2018 %>% filter(!is.na(temp))
+temp_2019 <- temp_2019 %>% filter(!is.na(temp))
+temp_2020 <- temp_2020 %>% filter(!is.na(temp))
+temp_2021 <- temp_2021 %>% filter(!is.na(temp))
+
+temp_2017 <- inner_join(temp_2017, LiveOcean_grid, by = "point")
+temp_2018 <- inner_join(temp_2018, LiveOcean_grid, by = "point")
+temp_2019 <- inner_join(temp_2019, LiveOcean_grid, by = "point")
+temp_2020 <- inner_join(temp_2020, LiveOcean_grid, by = "point")
+temp_2021 <- inner_join(temp_2021, LiveOcean_grid, by = "point")
+
+temp_2017 <- temp_2017 %>% filter(!is.na(grid_id))
+temp_2018 <- temp_2018 %>% filter(!is.na(grid_id))
+temp_2019 <- temp_2019 %>% filter(!is.na(grid_id))
+temp_2020 <- temp_2020 %>% filter(!is.na(grid_id))
+temp_2021 <- temp_2021 %>% filter(!is.na(grid_id))
+
+rm(temp_brick)
+```
+
+```{r LiveOcean Extraction: SALINITY}
+## Data Extraction - SALINITY ##
+sal_brick <- brick(sal.array, xmn=min(lat), xmx=max(lat), ymn=min(lon), ymx=max(lon), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+# correct the orrientation of the raster brick
+sal_brick <- flip(t(sal_brick), direction='y')
+
+sal_2017 <- data.frame()
+sal_2018 <- data.frame()
+sal_2019 <- data.frame()
+sal_2020 <- data.frame()
+sal_2021 <- data.frame()
+
+for(i in 1:nrow(extraction_points)) {
+  point_series <- raster::extract(sal_brick, extraction_points[i,], method='simple')
+  data <- data.frame(
+    point = c(rep(i, times = 1764)),
+    lat = rep(extraction_points[i,2], times = 1764), 
+    lon = rep(extraction_points[i,1], times = 1764), 
+    ocean_time = c(seq(1,1764)),
+    salt = c(point_series)
+  )
+  data17 <- data %>% filter(ocean_time >= 274 & ocean_time <= 334)
+  data18 <- data %>% filter(ocean_time >= 639 & ocean_time <= 699)
+  data19 <- data %>% filter(ocean_time >= 1004 & ocean_time <= 1064)
+  data20 <- data %>% filter(ocean_time >= 1370 & ocean_time <= 1430)
+  data21 <- data %>% filter(ocean_time >= 1735 & ocean_time <= 1764)
+  sal_2017 <- rbind(sal_2017, data17)
+  sal_2018 <- rbind(sal_2018, data18)
+  sal_2019 <- rbind(sal_2019, data19)
+  sal_2020 <- rbind(sal_2020, data20)
+  sal_2021 <- rbind(sal_2021, data21)
+  rm(data, data17, data18, data21, data19, data20)
+  print(i)
+}
+
+# cleanup and formatting
+sal_2017 <- sal_2017 %>% filter(!is.na(salt))
+sal_2018 <- sal_2018 %>% filter(!is.na(salt))
+sal_2019 <- sal_2019 %>% filter(!is.na(salt))
+sal_2020 <- sal_2020 %>% filter(!is.na(salt))
+sal_2021 <- sal_2021 %>% filter(!is.na(salt))
+
+sal_2017 <- inner_join(sal_2017, LiveOcean_grid, by = "point")
+sal_2018 <- inner_join(sal_2018, LiveOcean_grid, by = "point")
+sal_2019 <- inner_join(sal_2019, LiveOcean_grid, by = "point")
+sal_2020 <- inner_join(sal_2020, LiveOcean_grid, by = "point")
+sal_2021 <- inner_join(sal_2021, LiveOcean_grid, by = "point")
+
+sal_2017 <- sal_2017 %>% filter(!is.na(grid_id))
+sal_2018 <- sal_2018 %>% filter(!is.na(grid_id))
+sal_2019 <- sal_2019 %>% filter(!is.na(grid_id))
+sal_2020 <- sal_2020 %>% filter(!is.na(grid_id))
+sal_2021 <- sal_2021 %>% filter(!is.na(grid_id))
+
+rm(sal_brick)
+```
+
+# Compile Data on Cruise Dates for Regressions
+Compile the daily data for each variable, specifically for dates on which marine bird and mammal transects were conducted
+```{r Create cumulative LiveOcean files}
+phyto <- rbind(phyto_2017, phyto_2018, phyto_2019, phyto_2020, phyto_2021)
+temp <- rbind(temp_2017, temp_2018, temp_2019, temp_2020, temp_2021)
+salt <- rbind(sal_2017, sal_2018, sal_2019, sal_2020, sal_2021)
+```
+
+```{r Cruise Data, echo=FALSE}
+# determine what grid cells fall within transect bounds
+transect_zones <- read_csv("~/Dropbox/PelagicEcosystemFunction_21/transect_area.csv")
+transect_zones <- transect_zones %>% dplyr::select(id, name)
+transect_zones <- transect_zones %>% rename(
+  grid_id = id,
+  transect = name
+)
+
+cruises_ocean_time_all <- data.frame(
+  Date = c("2017-10-03", "2017-10-10", "2017-10-24", "2017-10-31", "2017-11-07", "2017-11-16", "2018-10-02", "2018-10-11", "2018-10-16", "2018-10-23", "2018-10-30", "2018-11-06", "2019-10-02", "2019-10-19", "2019-10-23", "2019-10-30", "2019-11-05", "2020-10-06", "2020-10-07", "2020-10-15", "2020-10-20", "2020-10-26", "2020-11-02", "2020-11-10", "2021-10-07", "2021-10-12", "2021-10-19", "2021-10-26"),
+  ocean_time = c(276, 283, 297, 304, 311, 320, 640, 649, 654, 661, 668, 675, 1005, 1022, 1026, 1033, 1034, 1375, 1376, 1384, 1389, 1395, 1402, 1410, 1741, 1746, 1753, 1760),
+  cruise = c(seq(1,28))
+)
+
+cruises_ocean_time_all$Date <- as.Date(cruises_ocean_time_all$Date)
+
+LO_phyto <- left_join(phyto, cruises_ocean_time_all)
+LO_temp <- left_join(temp, cruises_ocean_time_all)
+LO_salt <- left_join(salt, cruises_ocean_time_all)
+
+LO_phyto <- LO_phyto %>% filter(!is.na(cruise))
+LO_temp <- LO_temp %>% filter(!is.na(cruise))
+LO_salt <- LO_salt %>% filter(!is.na(cruise))
+
+#E summarize by grid cell ##
+# Phytoplankton
+LO_phyto <- LO_phyto %>% group_by(Date, grid_id) %>% summarise(
+  phyto = mean(phyto, na.rm = TRUE)
+)
+
+# Temperature
+sd <- LO_temp %>% group_by(Date, grid_id) %>% summarise(
+  temp_sd = sd(temp, na.rm = TRUE)
+)
+
+LO_temp <- LO_temp %>% group_by(Date, grid_id) %>% summarise(
+  temp = mean(temp, na.rm = TRUE)
+)
+
+LO_temp$temp_sd <- c(sd$temp_sd)
+# Salinity
+LO_salt <- LO_salt %>% group_by(Date, grid_id) %>% summarise(
+  salt = mean(salt, na.rm = TRUE)
+)
+
+# PHYTOPLANKTON
+## select data on transects
+LO_phyto <- left_join(LO_phyto, transect_zones) # assign zones to each grid cell
+LO_phyto <- LO_phyto %>% filter(!is.na(transect)) # filter out grid cells with no zones
+# take the average daily value in each zone
+LO_phyto <- LO_phyto %>% group_by(Date, transect) %>% summarise(
+  phyto = mean(phyto)
+)
+
+LO_phyto <- LO_phyto %>% rename(
+  Zone = transect
+)
+# change zone to factor
+LO_phyto$Zone <- as.factor(LO_phyto$Zone)
+# change Date to character
+LO_phyto$Date <- as.character(LO_phyto$Date)
+# SEA SURFACE TEMPERATRUE
+## select data on transects
+LO_temp <- left_join(LO_temp, transect_zones) # assign zones to each grid cell
+LO_temp <- LO_temp %>% filter(!is.na(transect)) # filter out grid cells with no zones
+# take the average daily value in each zone
+LO_temp <- LO_temp %>% group_by(Date, transect) %>% summarise(
+  temp = mean(temp),
+  temp_sd = mean(temp_sd, na.rm = TRUE)
+)
+
+LO_temp <- LO_temp %>% rename(
+  Zone = transect
+)
+# change zone to factor
+LO_temp$Zone <- as.factor(LO_temp$Zone)
+# change Date to character
+LO_temp$Date <- as.character(LO_temp$Date)
+# SALINITY
+## select data on transects
+LO_salt <- left_join(LO_salt, transect_zones) # assign zones to each grid cell
+LO_salt <- LO_salt %>% filter(!is.na(transect)) # filter out grid cells with no zones
+# take the average daily value in each zone
+LO_salt <- LO_salt %>% group_by(Date, transect) %>% summarise(
+  salt = mean(salt)
+)
+
+LO_salt <- LO_salt %>% rename(
+  Zone = transect
+)
+# change zone to factor
+LO_salt$Zone <- as.factor(LO_salt$Zone)
+# change Date to character
+LO_salt$Date <- as.character(LO_salt$Date)
+```
+
+# Compute Daily Values for Each Variable
+Summarise the average value of each variable by grid cell and date:
+
+```{r Summarizing LiveOcean by Date and Grid_ID 2017-2020, echo=FALSE}
+phyto$Date <- as.Date(phyto$ocean_time, origin = "2016-12-31")
+temp$Date <- as.Date(temp$ocean_time, origin = "2016-12-31")
+salt$Date <- as.Date(salt$ocean_time, origin = "2016-12-31")
+
+phyto <- phyto %>% group_by(Date, grid_id) %>% summarise(phyto = mean(phyto))
+st.dv <- temp %>% group_by(Date, grid_id) %>% summarise(temp_sd = sd(temp, na.rm = TRUE))
+temp <- temp %>% group_by(Date, grid_id) %>% summarise(temp = mean(temp))
+temp$temp_sd <- st.dv$temp_sd
+salt <- salt %>% group_by(Date, grid_id) %>% summarise(salt = mean(salt))
+```
+
+## COMPILE STUDY AREA AND ENVIRONMENTAL DATA
+# Get static variable data from QGIS 
+Read in the CSV file containing the static variables bathymetry, topography, shore distance, channel width, and tidal current as calculated in QGIS and stored in a local CSV:
+
+```{r Static variable base file, echo=FALSE}
+base <- read_csv("~/Dropbox/PelagicEcosystemFunction_21/sja_grid.csv")
+
+# add channel width variable
+channel.width <- read_csv("~/Dropbox/PelagicEcosystemFunction_21/channel_width.csv")
+base <- inner_join(base, channel.width)
+
+# make sure zonal statistic bins match grid bins
+all.equal(base$left_bound, base$`Zonal Statistics_left`, check.attributes = TRUE)
+
+# select columns of interest
+base <- base %>% rename(
+  NS_name = name,
+  EW_name = `EW Joined_name`,
+  NS_width = `length(m)`,
+  EW_width = `EW Joined_length(m)`
+)
+base <- base %>% dplyr::select(grid_id, lat_deg, long_deg, centroid_depth, Station, average_depth, bathy__stdev, shore_distance, NS_width, EW_width)
+
+# eliminate overland points
+base <- base %>% filter(centroid_depth <= 0 | average_depth <= 0)
+base <- base %>% filter(!is.na(centroid_depth)) 
+base <- base[-c(444),]
+
+# determine single channel width
+ns <- base %>% filter((NS_width - EW_width) < 0 | is.na(EW_width))
+ew <- base %>% filter((NS_width - EW_width) > 0 | is.na(NS_width))
+
+# get rid of EW for NS channels
+ns <- ns %>% dplyr::select(grid_id, NS_width)
+ns <- ns %>% rename(
+  channel_width = NS_width
+)
+# get rid of NS for EW channels
+ew <- ew %>% dplyr::select(grid_id, EW_width)
+ew <- ew %>% rename(
+  channel_width = EW_width
+)
+width <- rbind(ns,ew)
+base <- inner_join(base, width, by = "grid_id")
+base <- base %>% dplyr::select(-c(NS_width, EW_width))
+
+# cleanup
+rm(ns, ew, width)
+
+# add static tidal current proxy
+base <- inner_join(base, tcur, by = "Station")
+
+# rename using variable codes
+base <- base %>% rename(
+  bathy = average_depth,
+  topog = bathy__stdev,
+  dist = shore_distance,
+  channel_width = channel_width
+)
+```
+
+# Include dynamic variables from LiveOcean
+Now include the daily values for each of my dynamic variables obtained from LiveOcean model; phytoplankton concentration, sea surface temperature, SST standard deviation, and salinity:
+
+```{r Dynamic Variables}
+env_all <- right_join(base, phyto, by = "grid_id")
+env_all <- inner_join(env_all, temp, by = c("grid_id", "Date"))
+env_all <- inner_join(env_all, salt, by = c("grid_id", "Date"))
+
+env_all <- env_all %>% filter(!is.na(tcur))
+```
+
+# Examining for correlations
+Lets explore to see if any of our environmental variables are cross correlated with eachother
+
+```{r Chart Correlation}
+cor.test <- cor(env_all[,-c(1:5, 11)], use = "complete.obs")
+
+
+mydata <- env_all %>% dplyr::select(-c(grid_id, lat_deg, long_deg, centroid_depth, Station, Date))
+
+chart.Correlation(mydata)
+```
+
+
+## EXTRACTING MARINE BIRD AND MAMMAL DENSITIES
+Here I extract the historical MBM density data by zone from the provided master sheet:
+```{r MBM counts}
+# read in MBM master data
+MBM_master <- read_excel("~/Desktop/PEF/MBM_data/MBM_Data2008-2021_MASTER.xlsx", range = "countbyrecord!A1:AN30000")
+MBM_master <- MBM_master %>% dplyr::select("Year", "Date", "Time", "Zone", "Transect", "GL", "CoMu", "HPorp", "HSeal")
+# standardize time and date and year
+MBM_master$Time <- hms::as_hms(MBM_master$Time)
+MBM_master$Date <- ymd(MBM_master$Date)
+MBM_master$Year <- year(MBM_master$Date)
+# isolate years of interest
+MBM_master <- MBM_master %>% filter(Year >= 2017)
+MBM_master <- MBM_master %>% filter(Date != "2021-11-2" & Date != "2021-11-11")
+# count observed individuals for each species by cruise date, zone, and transect (N/S vs. S/N)
+MBM_master <- MBM_master %>% group_by(Year, Date, Zone, Transect) %>% summarize(GL = sum(GL), CoMu = sum(CoMu), HPorp = sum(HPorp), HSeal = sum(HSeal))
+# Add in survey effort column 
+single_transect_effort <- zone_effort
+single_transect_effort <- single_transect_effort %>% mutate(effort = sqr_km / 2)
+single_transect_effort <- single_transect_effort %>% dplyr::select(-c("sqr_km"))
+
+MBM_master <- left_join(MBM_master, single_transect_effort, by = "Zone")
+MBM_master$Zone <- factor(MBM_master$Zone)
+# Total count and effort within each zone on each cruise day 
+MBM_master <- ungroup(MBM_master)
+MBM_master <- MBM_master %>% group_by(Date, Zone) %>% summarize (GL = sum(GL), CoMu = sum(CoMu), HPorp = sum(HPorp), HSeal = sum(HSeal), effort = sum(effort))
+
+# reformat
+GL <- MBM_master %>% dplyr::select(-c("CoMu", "HPorp", "HSeal"))
+GL <- GL %>% rename(count = GL)
+GL$species <- "GL"
+
+CoMu <- MBM_master %>% dplyr::select(-c("GL", "HPorp", "HSeal"))
+CoMu <- CoMu %>% rename(count = CoMu)
+CoMu$species <- "CoMu"
+
+HPorp <- MBM_master %>% dplyr::select(-c("GL", "CoMu", "HSeal"))
+HPorp <- HPorp %>% rename(count = HPorp)
+HPorp$species <- "HPorp"
+
+HSeal <- MBM_master %>% dplyr::select(-c("GL", "CoMu", "HPorp"))
+HSeal <- HSeal %>% rename(count = HSeal)
+HSeal$species <- "HSeal"
+
+MBM_master <- rbind(GL, CoMu, HPorp, HSeal)
+```
+
+# Mike's version
+```{r Mike's version}
+# read information on species codes, names and groups
+species_names <- read_excel("~/Desktop/PEF/MBM_data/MBM_Data2008-2021_MASTER.xlsx", range = "metadata!A10:f45")
+
+# read data
+byrecord <- read_excel("~/Desktop/PEF/MBM_data/MBM_Data2008-2021_MASTER.xlsx", range = "countbyrecord!A1:AN30000")
+
+# select rows with data
+byrecord %>% 
+  filter(Date>0) ->  # remove blank lines
+  byrecord           
+
+# standardize time and date and year
+byrecord$Time <- hms::as_hms(byrecord$Time)
+byrecord$Date <- ymd(byrecord$Date)
+byrecord$Year <- year(byrecord$Date)
+
+### Sampling effort first ###
+# read sampling effort (number of times a zone is sampled during a cruise) from a file
+effort <- read_excel("MBM_Data2008-2021_MASTER.xlsx", range = "sampling effort!A14:g150")
+effort$Date <- ymd(effort$Date)  # date format
+# select rows with data
+effort %>% 
+  filter(Date>0) ->  # remove blank lines
+  effort             # n = 89 records
+
+# read area sizes (square kilometers) for each zone
+area_size <- read_excel("MBM_Data2008-2021_MASTER.xlsx", range = "sampling effort!A2:b8")
+
+# create tibble to translate zone naming, e.g., Zone_1 to 1
+zone_names <- 
+  tibble(
+  Zone_name = c("Zone_1","Zone_2","Zone_3","Zone_4","Zone_5","Zone_6"), 
+  Zone = seq(1,6)
+)
+  
+# reformat effort 
+effort %>%
+  gather(key=Zone_name,value=Count,"Zone_1":"Zone_6") %>%
+  left_join(zone_names,by = "Zone_name") %>%
+  left_join(area_size,by = "Zone") ->  
+  effort_long                                 # n = 534 records 
+
+# compute area sampled for each date and zone
+effort_long$Effort_sqkm <- effort_long$Count * effort_long$Size_sqkm
+
+### Number of MBM is next ###
+# sum species counts by Date and Zone 
+byrecord %>%
+  dplyr::select(-c(Year)) %>%                   # drop year from summing
+  group_by(Date,Zone) %>%                       # group by date and zone
+  summarize_if(is.numeric, sum, na.rm=TRUE) ->  # sum by date
+byrecord_sumbyzone                              # n = 532 records 
+
+# join effort data and species count data by Date and Zone
+effort_long %>%
+  left_join(byrecord_sumbyzone, by = c("Date","Zone")) %>%
+  dplyr::select(c("Date","Zone","Effort_sqkm","GL":"RivOtt")) %>%
+    gather(key=Species_code,value=Count,"GL":"RivOtt") ->
+  mydata_bydatezone   # n = 19,950
+
+# convert NA Count to 0 (these are sampled zones with no MBM observed)
+mydata_bydatezone$Count[is.na(mydata_bydatezone$Count)] <- 0
+
+# remove unsampled zones (Effort = 0)
+mydata_bydatezone %>%
+  dplyr::filter(Effort_sqkm > 0) ->
+  mydata_bydatezone
+
+# compute species density by Date and Zone
+mydata_bydatezone$Density <- round(mydata_bydatezone$Count / mydata_bydatezone$Effort_sqkm,2)
+```
+
+# compare my calculations with Matt's
+```{r MBM master comparison}
+mydata_bydatezone$Zone <- factor(mydata_bydatezone$Zone)
+test <- inner_join(MBM_master, mydata_bydatezone)
+sum(test$count == test$Count) # counts are the same in all rows - excellent
+sum(test$effort == test$Effort_sqkm) # there are four instances when effort is not the same in the two records
+
+test_noag <- test %>% filter(effort != Effort_sqkm)
+# NOTE: FOR DENSITY CALCULATIONS - USE EITHER COUNT BUT SHOULD USE MIKE'S EFFORT METRIC SINCE IT WAS OBTAINED FROM DIRECT NOTES LEFT IN THE DATA
+MBM_master <- test[,-c(4,7,9)]
+rm(test, test_noag)
+```
+
+## ZONE COMPARISONS
+The first step of my analysis should be to compare the differences in density and frequency of presence between the different transect zones for each species to determine if they are significantly different. Because our data do not meet the assumption of normality for an ANOVA, I will apply a Kruskall-Wallis test instead. 
+
+```{r Zone analysis of variance}
+GL <- mydata_bydatezone %>% filter(species == "GL")
+# visualize the data
+ggplot(data = GL, aes(x = Zone, y = Density, color = Zone)) +
+  geom_jitter(alpha = 0.5) +
+  geom_boxplot(color = "black", fill = NA) +
+  annotate(geom = "text", x = 1, y = 100, label = "a", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 2, y = 100, label = "a", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 3, y = 100, label = "b", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 4, y = 100, label = "b", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 5, y = 100, label = "c", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 6, y = 160, label = "b", color = "grey22", fontsize = 13, fontface = "italic") +
+  theme_classic()
+# run an Kruskall-Wallis test on the data
+print(kruskal.test(Density ~ Zone, data = GL)) # there are highly significant differences between the zones
+# post-hoc testing
+pairwise.wilcox.test(GL$Density, GL$Zone,
+  p.adjust.method = "bonferroni" # apply Bonferroni's correction
+)
+
+# CoMu
+CM <- mydata_bydatezone %>% filter(species == "CoMu")
+# visualize the data
+ggplot(data = CM, aes(x = Zone, y = Density, color = Zone)) +
+  geom_jitter(alpha = 0.5) +
+  geom_boxplot(color = "black", fill = NA) +
+  annotate(geom = "text", x = 1, y = 250, label = "a", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 2, y = 250, label = "a", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 3, y = 750, label = "b", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 4, y = 750, label = "b", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 5, y = 750, label = "b", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 6, y = 1000, label = "c", color = "grey22", fontsize = 13, fontface = "italic")+
+  theme_classic()
+# run an anova on the data
+kruskal.test(Density ~ Zone, data = CM) # there are highly significant differences between the zones
+# post-hoc testing
+pairwise.wilcox.test(CM$Density, CM$Zone,
+  p.adjust.method = "bonferroni" # apply Bonferroni's correction
+)
+
+# HPorp
+HPorp <- mydata_bydatezone %>% filter(species == "HPorp")
+# visualize the data
+ggplot(data = HPorp, aes(x = Zone, y = Density, color = Zone)) +
+  geom_jitter(alpha = 0.5) +
+  geom_boxplot(color = "black", fill = NA) +
+  annotate(geom = "text", x = 1, y = 10, label = "a", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 2, y = 10, label = "b", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 3, y = 20, label = "b", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 4, y = 20, label = "b", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 5, y = 10, label = "a", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 6, y = 10, label = "a", color = "grey22", fontsize = 13, fontface = "italic") +
+  theme_classic()
+# run an anova on the data
+kruskal.test(Density ~ Zone, data = HPorp) # there are highly significant differences between the zones
+
+# post-hoc testing
+pairwise.wilcox.test(HPorp$Density, HPorp$Zone,
+  p.adjust.method = "bonferroni" # apply Bonferroni's correction
+)
+
+# HSeal
+HSeal <- mydata_bydatezone %>% filter(species == "HSeal")
+# visualize the data
+ggplot(data = HSeal, aes(x = Zone, y = Density, color = Zone)) +
+  geom_boxplot(color = "black", fill = NA) +
+  geom_jitter(alpha = 0.5) +
+  annotate(geom = "text", x = 1, y = 15, label = "a", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 2, y = 15, label = "a", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 3, y = 30, label = "b", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 4, y = 20, label = "b", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 5, y = 20, label = "b", color = "grey22", fontsize = 13, fontface = "italic") +
+  annotate(geom = "text", x = 6, y = 15, label = "a", color = "grey22", fontsize = 13, fontface = "italic") +
+  theme_classic()
+# run an anova on the data 
+kruskal.test(Density ~ Zone, data = HSeal) # there are highly significant differences between the zones
+# post-hoc testing
+pairwise.wilcox.test(HSeal$Density, HSeal$Zone,
+  p.adjust.method = "bonferroni" # apply Bonferroni's correction
+)
+
+```
+
+It's logical to assume that long-term differences in zonal abundance are primarily driven by static variables which are stable over decadal time scales. Let's see how my different static environmental variables vary across the different zones
+
+```{r static environmental variables}
+# add environmental data
+static <- left_join(GL, trans_all)
+static <- static %>% filter(!is.na(bathy))
+
+## now let's examine variables which have historically been incorporated into the glaucous gull models
+# bathymetry
+ggplot() +
+  geom_boxplot(data = GL, aes(x = Zone, y = Density, color = Zone), fill = NA) +
+  geom_point(data = static, aes(x = Zone, y = -bathy), color = "black") +
+  scale_y_continuous(name = "Density", sec.axis = sec_axis(trans = ~., name = "Depth (m)")) +
+  theme_classic()
+# channel width
+ggplot() +
+  geom_boxplot(data = GL, aes(x = Zone, y = Density, color = Zone), fill = NA) +
+  geom_point(data = static, aes(x = Zone, y = (channel_width / 150)), color = "black") +
+  scale_y_continuous(name = "Density", sec.axis = sec_axis(trans = ~.*150, name = "Channel Width (m)")) +
+  theme_classic()
+# tidal current amplitude
+ggplot() +
+  geom_boxplot(data = GL, aes(x = Zone, y = Density, color = Zone), fill = NA) +
+  geom_point(data = static, aes(x = Zone, y = (tcur * 10)), color = "black") +
+  scale_y_continuous(name = "Density", sec.axis = sec_axis(trans = ~. / 10, name = "Tidal Current (knots)")) +
+  theme_classic()
+# sea-surface temperature
+ggplot() +
+  geom_boxplot(data = GL, aes(x = Zone, y = Density, color = Zone), fill = NA) +
+  geom_boxplot(data = static, aes(x = Zone, y = temp*5), fill = NA, color = "black") +
+  geom_jitter(data = static, aes(x = Zone, y = temp*5), alpha = 0.4, color = "black") +
+  scale_y_continuous(name = "Density", sec.axis = sec_axis(trans = ~./5, name = "SST (ºC)")) +
+  theme_classic()
+# sea-surface temperature standard deviation
+ggplot() +
+  geom_boxplot(data = GL, aes(x = Zone, y = Density, color = Zone), fill = NA) +
+  geom_boxplot(data = static, aes(x = Zone, y = temp_sd*3000), fill = NA, color = "black") +
+  geom_jitter(data = static, aes(x = Zone, y = temp_sd*3000), alpha = 0.4, color = "black") +
+  scale_y_continuous(name = "Density", sec.axis = sec_axis(trans = ~./3000, name = "SST SD(ºC)")) +
+  theme_classic()
+# sea-surface salinity
+ggplot() +
+  geom_boxplot(data = GL, aes(x = Zone, y = Density, color = Zone), fill = NA) +
+  geom_boxplot(data = static, aes(x = Zone, y = salt*2), fill = NA, color = "black") +
+  geom_jitter(data = static, aes(x = Zone, y = salt*2), alpha = 0.4, color = "black") +
+  scale_y_continuous(name = "Density", sec.axis = sec_axis(trans = ~./2, name = "Salinity(PSU)")) +
+  theme_classic()
+# phytoplankton concentration
+ggplot() +
+  geom_boxplot(data = GL, aes(x = Zone, y = Density, color = Zone), fill = NA) +
+  geom_boxplot(data = static, aes(x = Zone, y = phyto*20), fill = NA, color = "black") +
+  geom_jitter(data = static, aes(x = Zone, y = phyto*20), alpha = 0.4, color = "black") +
+  scale_y_continuous(name = "Density", sec.axis = sec_axis(trans = ~./20, name = "Phytoplankton (µmol/L)")) +
+  theme_classic()
+
+## COMMON MURRE
+static <- left_join(CM, trans_all)
+static <- static %>% filter(!is.na(bathy))
+
+## now let's examine variables which have historically been incorporated into the glaucaous gull models
+# distance from shore
+ggplot() +
+  geom_boxplot(data = CM, aes(x = Zone, y = Density, color = Zone), fill = NA) +
+  geom_point(data = static, aes(x = Zone, y = dist / 5), color = "black") +
+  scale_y_continuous(name = "Density", sec.axis = sec_axis(trans = ~.* 5, name = "Distance from Shore (m)")) +
+  theme_classic()
+# bathymetry
+ggplot() +
+  geom_boxplot(data = CM, aes(x = Zone, y = Density, color = Zone), fill = NA) +
+  geom_point(data = static, aes(x = Zone, y = -bathy*5), color = "black") +
+  scale_y_continuous(name = "Density", sec.axis = sec_axis(trans = ~./5, name = "Depth (m)")) +
+  theme_classic()
+# phytoplankton
+ggplot() +
+  geom_boxplot(data = CM, aes(x = Zone, y = Density, color = Zone), fill = NA) +
+   geom_boxplot(data = static, aes(x = Zone, y = phyto*100), fill = NA, color = "black") +
+  geom_jitter(data = static, aes(x = Zone, y = phyto*100), alpha = 0.4, color = "black") +
+  scale_y_continuous(name = "Density", sec.axis = sec_axis(trans = ~./100, name = "Depth (m)")) +
+  theme_classic()
+# tidal current amplitude
+ggplot() +
+  geom_boxplot(data = CM, aes(x = Zone, y = Density, color = Zone), fill = NA) +
+  geom_point(data = static, aes(x = Zone, y = (tcur * 20)), color = "black") +
+  scale_y_continuous(name = "Density", sec.axis = sec_axis(trans = ~. / 20, name = "Tidal Current (knots)")) +
+  theme_classic()
+# sea-surface temperature standard deviation
+ggplot() +
+  geom_boxplot(data = CM, aes(x = Zone, y = Density, color = Zone), fill = NA) +
+  geom_boxplot(data = static, aes(x = Zone, y = temp_sd*6000), fill = NA, color = "black") +
+  geom_jitter(data = static, aes(x = Zone, y = temp_sd*6000), alpha = 0.4, color = "black") +
+  scale_y_continuous(name = "Density", sec.axis = sec_axis(trans = ~./6000, name = "SST SD(ºC)")) +
+  theme_classic()
+```
+
+Now, I will average the zonal densities and environmental conditions within each year and perform a generalized linear regression to look for large-scale trends:
+
+## INTERANNUAL TRENDS
+This code chunk takes the annual average of both marine bird and mammal abundance and environmental conditons within each of the six zones. This is meant to compare how persistent interannual trends are influenced by persistent differences in environmental conditions and aims to match the temporal resolution of the training data with the patterns we aim to assess:
+
+```{r Zonal Trend Drivers: Seabirds}
+## GLAUCOUS GULLS
+static <- left_join(GL, trans_all)
+static <- static %>% filter(!is.na(bathy))
+static$dup <- static$Date
+static <- static %>% separate(dup, into = c("Year", "Month", "Day"), sep = "([-])")
+static$Year <- factor(static$Year)
+static <- static %>% filter(Year == 2017 | Year == 2018 | Year == 2019 | Year == 2020 | Year == 2021)
+GL.static <- static %>% group_by(Year, Zone) %>% summarise(count = round(mean(Count),0), effort = mean(Effort_sqkm), bathy = mean(bathy), topog = mean(topog), dist = mean(dist), chwi = mean(channel_width), tcur = mean(tcur), phyto = mean(phyto), temp = mean(temp), temp_sd = mean(temp_sd), salt = mean(salt))
+scaled_vars <- scale(GL.static[,5:13])
+GL.static <- GL.static %>% dplyr::select(Year, Zone, count, effort)
+GL.static <- cbind(GL.static, scaled_vars)
+rm(scaled_vars)
+
+lm.GL01 <- gam(count ~ s(bathy, k=4), family = poisson, offset = log(effort), data = GL.static)
+lm.GL02 <- gam(count ~ s(topog, k=4), family = poisson, offset = log(effort), data = GL.static)
+lm.GL03 <- gam(count ~ s(dist, k=4), family = poisson, offset = log(effort), data = GL.static)
+lm.GL04 <- gam(count ~ s(chwi, k=4), family = poisson, offset = log(effort), data = GL.static)
+lm.GL05 <- gam(count ~ s(tcur, k=4), family = poisson, offset = log(effort), data = GL.static)
+lm.GL06 <- gam(count ~ s(phyto, k=4), family = poisson, offset = log(effort), data = GL.static)
+lm.GL07 <- gam(count ~ s(temp, k=4), family = poisson, offset = log(effort), data = GL.static)
+lm.GL08 <- gam(count ~ s(temp_sd, k=4), family = poisson, offset = log(effort), data = GL.static)
+lm.GL09 <- gam(count ~ s(salt, k=4), family = poisson, offset = log(effort), data = GL.static)
+
+# selecting the best model
+vec_AIC <- AIC(lm.GL01, lm.GL02, lm.GL03, lm.GL04, lm.GL05, lm.GL06, lm.GL07, lm.GL08, lm.GL09)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(lm.GL04)
+rm(lm.GL01, lm.GL02, lm.GL03, lm.GL05, lm.GL06, lm.GL07, lm.GL08, lm.GL09)
+
+# FS2
+lm.GL1.01 <- gam(count ~ s(chwi, k=4) + s(bathy, k=4), family = poisson, offset = log(effort), data = GL.static)
+lm.GL1.02 <- gam(count ~ s(chwi, k=4) + s(temp, k=4), family = poisson, offset = log(effort), data = GL.static)
+lm.GL1.03 <- gam(count ~ s(chwi, k=4) + s(temp_sd, k=4), family = poisson, offset = log(effort), data = GL.static)
+lm.GL1.04 <- gam(count ~ s(chwi, k=4) + s(salt, k=4), family = poisson, offset = log(effort), data = GL.static)
+
+# selecting the best model
+vec_AIC <- AIC(lm.GL04, lm.GL1.01, lm.GL1.02, lm.GL1.03, lm.GL1.04)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(lm.GL1.01)
+rm(lm.GL1.02, lm.GL1.03, lm.GL1.04)
+
+#FS3
+lm.GL11.01 <- gam(count ~ s(chwi, k=4) + s(bathy, k=3) + s(temp,k=4), family = poisson, offset = log(effort), data = GL.static)
+lm.GL11.02 <- gam(count ~ s(chwi, k=4) + s(bathy, k=4) + s(temp_sd,k=4), family = poisson, offset = log(effort), data = GL.static)
+lm.GL11.03 <- gam(count ~ s(chwi, k=4) + s(bathy, k=4) + s(salt,k=4), family = poisson, offset = log(effort), data = GL.static)
+
+# selecting the best model
+vec_AIC <- AIC(lm.GL1.01, lm.GL11.01, lm.GL11.02, lm.GL11.03)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(lm.GL11.01)
+rm(lm.GL11.02, lm.GL11.03)
+
+#FS4
+lm.GL111.01 <- gam(count ~ s(chwi, k=4) + s(bathy, k=4) + s(temp,k=4) + s(temp_sd,k=4), family = poisson, offset = log(effort), data = GL.static)
+lm.GL111.02 <- gam(count ~ s(chwi, k=4) + s(bathy, k=4) + s(temp,k=4) + s(salt,k=4), family = poisson, offset = log(effort), data = GL.static)
+
+# selecting the best model
+vec_AIC <- AIC(lm.GL11.01, lm.GL111.01, lm.GL111.02)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+# temp_sd was the next best predictor but not statistically significant
+summary(lm.GL111.01)
+rm(lm.GL111.01, lm.GL111.02)
+
+# plotting model results
+# SST
+newdata1 <- with(GL.static, data.frame(effort = mean(effort), bathy = mean(bathy), chwi = mean(chwi), temp = rep(seq(-2,2.5, 0.05), times = 1))) # choose variable to model
+newdata2 <- cbind(newdata1, predict(lm.GL11.01, newdata = newdata1, type = "response", se = TRUE))
+newdata2 <- within(newdata2, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)
+})
+ggplot(newdata2) + 
+  geom_ribbon(aes(x = temp, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = temp, y = fit)) +
+  geom_point(data = GL.static, aes(x = temp, y = count, color = Zone), alpha = 0.5) +
+  xlab("SST (ºC)") +
+  ylab("Glaucous Gull Count") +
+  theme_classic() # gulls are more common in regions of higher surface temperatures
+
+# CHANNEL WIDTH
+newdata1 <- with(GL.static, data.frame(effort = mean(effort), bathy = mean(bathy), chwi = seq(-1,2, 0.025), temp = mean(temp))) # choose variable to model
+newdata2 <- cbind(newdata1, predict(lm.GL11.01, newdata = newdata1, type = "response", se = TRUE))
+newdata2 <- within(newdata2, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)
+})
+
+ggplot(data = newdata2) + 
+  geom_point(data = GL.static, aes(x = chwi, y = count, color = Zone), alpha = 0.5) +
+  geom_ribbon(data = newdata2, aes(x = chwi, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(data = newdata2, aes(x = chwi, y = fit)) +
+  xlab("Channel Width (m)") +
+  ylab("Glaucous Gull Count") +
+  theme_classic()# gulls appear to be more common in wider channels
+
+# DEPTH
+newdata1 <- with(GL.static, data.frame(effort = mean(effort), bathy = seq(-2,2,0.05), chwi = mean(chwi), temp = mean(temp))) # choose variable to model
+newdata2 <- cbind(newdata1, predict(lm.GL11.01, newdata = newdata1, type = "response", se = TRUE))
+newdata2 <- within(newdata2, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)
+})
+
+ggplot(data = newdata2) + 
+  geom_point(data = GL.static, aes(x = bathy, y = count, color = Zone), alpha = 0.5) +
+  geom_ribbon(data = newdata2, aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(data = newdata2, aes(x = bathy, y = fit)) +
+  xlab("Water Depth (m)") +
+  ylab("Glaucous Gull Count") +
+  theme_classic() # gulls are more common in shallower regions (like where shelves force aggregate water from the strait near the surface)
+
+# check to see how well this model correlates with our observations
+# partition the data
+allrows <- 1:nrow(GL.static)
+new.val <- data.frame()
+raw.data <- data.frame()
+for(i in 1:10) {
+  set.seed(i)
+  train_rows <- sample(allrows, replace = F, size = 0.75*length(allrows))
+  test_rows <- allrows[-train_rows]
+  train <- GL.static[train_rows,]
+  test <- GL.static[test_rows,]
+  # train a model for testing
+  lm.GL <- glm(count ~ bathy + chwi + temp + chwi:temp, family = poisson, offset = log(effort), data = train)
+  # make predictions on test data
+  test$predicted <- predict(lm.GL, newdata = test, type = "response")
+  # check the accuracy
+  cor(test$count, test$predicted)
+  data <- data.frame(
+    trial = c(i),
+    cor.coef = c(cor(test$count, test$predicted)),
+    r.squared = rsq(test$count, test$predicted)
+  )
+  new.val <- rbind(new.val, data)
+  rm(data)
+  data <- data.frame(
+    count = c(test$count),
+    predicted = c(test$predicted)
+  )
+  raw.data <- rbind(raw.data, data)
+  rm(data, train, test)
+  print(i)
+}
+
+ggplot(data = raw.data) +
+  geom_point(aes(x = predicted, y = count)) + 
+  theme_classic()
+
+## COMMON MURRE
+static <- left_join(CM, trans_all)
+static <- static %>% filter(!is.na(bathy))
+static$dup <- static$Date
+static <- static %>% separate(dup, into = c("Year", "Month", "Day"), sep = "([-])")
+static$Year <- factor(static$Year)
+static <- static %>% filter(Year == 2017 | Year == 2018 | Year == 2019 | Year == 2020 | Year == 2021)
+CM.static <- static %>% group_by(Year, Zone) %>% summarise(count = round(mean(Count),0), effort = mean(Effort_sqkm), bathy = mean(bathy), topog = mean(topog), dist = mean(dist), chwi = mean(channel_width), tcur = mean(tcur), phyto = mean(phyto), temp = mean(temp), temp_sd = mean(temp_sd), salt = mean(salt))
+scaled_vars <- scale(CM.static[,5:13])
+CM.static <- CM.static %>% dplyr::select(Year, Zone, count, effort)
+CM.static <- cbind(CM.static, scaled_vars)
+rm(scaled_vars)
+
+lm.CM01 <- gam(count ~ s(bathy,k=3), family = poisson, offset = log(effort), data = CM.static)
+lm.CM02 <- gam(count ~ s(topog,k=3), family = poisson, offset = log(effort), data = CM.static)
+lm.CM03 <- gam(count ~ s(dist,k=3), family = poisson, offset = log(effort), data = CM.static)
+lm.CM04 <- gam(count ~ s(chwi,k=3), family = poisson, offset = log(effort), data = CM.static)
+lm.CM05 <- gam(count ~ s(tcur,k=3), family = poisson, offset = log(effort), data = CM.static)
+lm.CM06 <- gam(count ~ s(phyto,k=4), family = poisson, offset = log(effort), data = CM.static)
+lm.CM07 <- gam(count ~ s(temp,k=4), family = poisson, offset = log(effort), data = CM.static)
+lm.CM08 <- gam(count ~ s(temp_sd,k=4), family = poisson, offset = log(effort), data = CM.static)
+lm.CM09 <- gam(count ~ s(salt,k=4), family = poisson, offset = log(effort), data = CM.static)
+
+# selecting the best model
+vec_AIC <- AIC(lm.CM01, lm.CM02, lm.CM03, lm.CM04, lm.CM05, lm.CM06, lm.CM07, lm.CM08, lm.CM09)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(lm.CM03)
+rm(lm.CM01, lm.CM02, lm.CM04, lm.CM05, lm.CM06, lm.CM07, lm.CM08, lm.CM09)
+# distance from shore is the best predictor of murre abundance
+
+#FS2
+lm.CM1.01 <- gam(count ~ s(dist,k=3) + s(bathy,k=3), family = poisson, offset = log(effort), data = CM.static)
+lm.CM1.02 <- gam(count ~ s(dist,k=3) + s(phyto,k=4), family = poisson, offset = log(effort), data = CM.static)
+lm.CM1.03 <- gam(count ~ s(dist,k=3) + s(temp,k=4), family = poisson, offset = log(effort), data = CM.static)
+lm.CM1.04 <- gam(count ~ s(dist,k=3) + s(temp_sd,k=4), family = poisson, offset = log(effort), data = CM.static)
+lm.CM1.05 <- gam(count ~ s(dist,k=3) + s(salt,k=4), family = poisson, offset = log(effort), data = CM.static)
+
+# selecting the best model
+vec_AIC <- AIC(lm.CM03, lm.CM1.01, lm.CM1.02, lm.CM1.03, lm.CM1.04, lm.CM1.05)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(lm.CM1.02)
+rm(lm.CM1.01, lm.CM1.03, lm.CM1.04, lm.CM1.05, lm.CM1.06, lm.CM1.07, lm.CM1.08)
+# phytoplankton is the next best predictor of murre abundance
+
+#FS3
+lm.CM11.01 <- gam(count ~ s(dist,k=3) + s(phyto,k=4) + s(bathy,k=3), family = poisson, offset = log(effort), data = CM.static)
+lm.CM11.02 <- gam(count ~ s(dist,k=3) + s(phyto,k=4) + s(temp,k=4), family = poisson, offset = log(effort), data = CM.static)
+lm.CM11.03 <- gam(count ~ s(dist,k=3) + s(phyto,k=4) + s(temp_sd,k=4), family = poisson, offset = log(effort), data = CM.static)
+lm.CM11.04 <- gam(count ~ s(dist,k=3) + s(phyto,k=4) + s(salt,k=4), family = poisson, offset = log(effort), data = CM.static)
+
+# selecting the best model
+vec_AIC <- AIC(lm.CM1.02, lm.CM11.01, lm.CM11.02, lm.CM11.03, lm.CM11.04)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(lm.CM11.03)
+rm(lm.CM11.01, lm.CM11.02, lm.CM11.04)
+# SST standard deviation is the next best predictor of murre abundance
+
+#FS4
+lm.CM111.01 <- gam(count ~ s(dist,k=3) + s(phyto,k=4) + s(temp_sd,k=4) + s(bathy,k=3), family = poisson, offset = log(effort), data = CM.static)
+lm.CM111.02 <- gam(count ~ s(dist,k=3) + s(phyto,k=4) + s(temp_sd,k=4) + s(temp,k=4), family = poisson, offset = log(effort), data = CM.static)
+lm.CM111.03 <- gam(count ~ s(dist,k=3) + s(phyto,k=4) + s(temp_sd,k=4) + s(salt,k=4), family = poisson, offset = log(effort), data = CM.static)
+
+# selecting the best model
+vec_AIC <- AIC(lm.CM11.03, lm.CM111.01, lm.CM111.02, lm.CM111.03)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(lm.CM111.02)
+rm(lm.CM111.01, lm.CM111.03)
+# temperature is the next best predictor 
+
+# FS5
+lm.CM1111.01 <- gam(count ~ s(dist,k=3) + s(phyto,k=4) + s(temp_sd,k=4) + s(temp,k=4) + s(bathy,k=3), family = poisson, offset = log(effort), data = CM.static)
+lm.CM1111.02 <- gam(count ~ s(dist,k=3) + s(phyto,k=4) + s(temp_sd,k=4) + s(temp,k=4) + s(salt,k=4), family = poisson, offset = log(effort), data = CM.static)
+
+# selecting the best model
+vec_AIC <- AIC(lm.CM111.02, lm.CM1111.01, lm.CM1111.02)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(lm.CM1111.02)
+rm(lm.CM1111.01)
+# salinity is the next best variable
+
+# FS6
+lm.CM11111.01 <- gam(count ~ s(dist,k=3) + s(phyto,k=3) + s(temp_sd,k=4) + s(temp,k=4) + s(salt,k=4) + s(bathy,k=3), family = poisson, offset = log(effort), data = CM.static)
+
+# selecting the best model
+vec_AIC <- AIC(lm.CM1111.02, lm.CM11111.01)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+# this variable did not substantially improve the model
+summary(lm.CM11111.01)
+
+## PLOTTING MODEL RESULTS: COMU
+# DISTANCE FROM SHORE
+newdata1 <- with(CM.static, data.frame(effort = mean(effort), dist = seq(-1,2.5, 0.05), phyto = mean(phyto), temp_sd = mean(temp_sd), temp = mean(temp), salt = mean(salt), bathy = mean(bathy))) # choose variable to model
+newdata2 <- cbind(newdata1, predict(lm.CM11111.01, newdata = newdata1, type = "response", se = TRUE))
+newdata2 <- within(newdata2, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)
+})
+
+ggplot(data = newdata2) + 
+  geom_point(data = CM.static, aes(x = dist, y = count, color = Zone), alpha = 0.5) +
+  geom_ribbon(data = newdata2, aes(x = dist, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(data = newdata2, aes(x = dist, y = fit)) +
+  xlab("Distance from Shore (m)") +
+  ylab("Common Murre Count") +
+  theme_classic() # murres are more common farther from shore
+
+# PHYTOPLANKTON CONCENTRATION
+newdata1 <- with(CM.static, data.frame(effort = mean(effort), dist = mean(dist), phyto = seq(-2,2,0.05), temp_sd = mean(temp_sd), temp = mean(temp), salt = mean(salt), bathy = mean(bathy))) # choose variable to model
+newdata2 <- cbind(newdata1, predict(lm.CM11111.01, newdata = newdata1, type = "response", se = TRUE))
+newdata2 <- within(newdata2, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)
+})
+
+ggplot(data = newdata2) + 
+  geom_point(data = CM.static, aes(x = phyto, y = count, color = Zone), alpha = 0.5) +
+  geom_ribbon(data = newdata2, aes(x = phyto, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(data = newdata2, aes(x = phyto, y = fit)) +
+  xlab("Phytoplankton Concentration (µmol/L)") +
+  ylab("Common Murre Count") +
+  theme_classic() # phytoplankton concentration has little impact in water w/ low topography but in regions of sills / canyons increasing phytoplankton concentration dramatically increases murre abundance
+
+# SST SD
+
+# SALINITY
+
+# DEPTH
+
+# check to see how well this model correlates with our observations
+# partition the data
+allrows <- 1:nrow(CM.static)
+new.val <- data.frame()
+raw.data <- data.frame()
+for(i in 1:10) {
+  set.seed(i)
+  train_rows <- sample(allrows, replace = F, size = 0.75*length(allrows))
+  test_rows <- allrows[-train_rows]
+  train <- CM.static[train_rows,]
+  test <- CM.static[test_rows,]
+  # train a model for testing
+  lm.CM <- glm(formula = count ~ topog + bathy + temp_sd + salt + phyto + topog:phyto, family = poisson, data = train, offset = log(effort))
+  # make predictions on test data
+  test$predicted <- predict(lm.CM, newdata = test, type = "response")
+  # check the accuracy
+  cor(test$count, test$predicted)
+  data <- data.frame(
+    trial = c(i),
+    cor.coef = c(cor(test$count, test$predicted)),
+    r.squared = rsq(test$count, test$predicted)
+  )
+  new.val <- rbind(new.val, data)
+  rm(data)
+  data <- data.frame(
+    count = c(test$count),
+    predicted = c(test$predicted)
+  )
+  raw.data <- rbind(raw.data, data)
+  rm(data, train, test)
+  print(i)
+}
+
+ggplot(data = raw.data) +
+  geom_point(aes(x = predicted, y = count)) + 
+  theme_classic()
+```
+
+```{r Zonal Trend Drivers: Marine Mammals}
+## HARBOR PORPOISE
+static <- left_join(HPorp, trans_all)
+static <- static %>% filter(!is.na(bathy))
+static$dup <- static$Date
+static <- static %>% separate(dup, into = c("Year", "Month", "Day"), sep = "([-])")
+static$Year <- factor(static$Year)
+static <- static %>% filter(Year == 2017 | Year == 2018 | Year == 2019 | Year == 2020 | Year == 2021)
+Present <- static %>% filter(Count != 0)
+Present$PA <- as.numeric(1)
+Absent <- static %>% filter(Count == 0)
+Absent$PA <- as.numeric(0)
+static <- rbind(Present, Absent)
+rm(Present, Absent)
+HP.static <- static %>% group_by(Year, Zone) %>% summarise(count = round(mean(Count),0), effort = mean(Effort_sqkm), PA = mean(PA), bathy = mean(bathy), topog = mean(topog), dist = mean(dist), chwi = mean(channel_width), tcur = mean(tcur), phyto = mean(phyto), temp = mean(temp), temp_sd = mean(temp_sd), salt = mean(salt))
+scaled_vars <- scale(HP.static[,6:14])
+HP.static <- HP.static %>% dplyr::select(Year, Zone, count, effort, PA)
+HP.static <- cbind(HP.static, scaled_vars)
+rm(scaled_vars)
+
+lm.HP01 <- glm(PA ~ bathy, data = HP.static)
+lm.HP02 <- glm(PA ~ topog, data = HP.static)
+lm.HP03 <- glm(PA ~ dist, data = HP.static)
+lm.HP04 <- glm(PA ~ chwi, data = HP.static)
+lm.HP05 <- glm(PA ~ tcur, data = HP.static)
+lm.HP06 <- glm(PA ~ phyto, data = HP.static)
+lm.HP07 <- glm(PA ~ temp, data = HP.static)
+lm.HP08 <- glm(PA ~ temp_sd, data = HP.static)
+lm.HP09 <- glm(PA ~ salt, data = HP.static)
+
+# selecting the best model
+vec_AIC <- AIC(lm.HP01, lm.HP02, lm.HP03, lm.HP04, lm.HP05, lm.HP06, lm.HP07, lm.HP08, lm.HP09)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(lm.HP06)
+
+```
+
+I can perform a similar analysis to examine how much density varies between years in the dataset 
+```{r Year ANOVA}
+GL$dup <- GL$Date
+GL <- GL %>% separate(dup, into = c("Year", "Month", "Day"), sep = "([-])")
+GL$Year <- factor(GL$Year)
+GL <- GL %>% filter(Year == 2017 | Year == 2018 | Year == 2019 | Year == 2020 | Year == 2021)
+# visualize the data
+ggplot(data = GL, aes(x = Year, y = Density, color = Year)) +
+  geom_jitter(alpha = 0.5) +
+  geom_boxplot(color = "black", fill = NA) +
+  theme_classic()
+
+# run an anova on the data
+GL.aov <- aov(Density ~ Year, data = GL)
+summary(GL.aov) # there are significant differences between the zones
+# post-hoc testing
+post_test <- glht(GL.aov,
+  linfct = mcp(Year = "Tukey") # Turkey HSD Test
+)
+
+summary(post_test)
+
+## CoMu
+CM$dup <- CM$Date
+CM <- CM %>% separate(dup, into = c("Year", "Month", "Day"), sep = "([-])")
+CM$Year <- factor(CM$Year)
+CM <- CM %>% filter(Year == 2017 | Year == 2018 | Year == 2019 | Year == 2020 | Year == 2021)
+# visualize the data
+ggplot(data = CM, aes(x = Year, y = Density, color = Year)) +
+  geom_jitter(alpha = 0.5) +
+  geom_boxplot(color = "black", fill = NA) +
+  theme_classic()
+
+# run an anova on the data
+CM.aov <- aov(Density ~ Year, data = CM)
+summary(CM.aov) # there are significant differences between the zones
+# post-hoc testing
+post_test <- glht(CM.aov,
+  linfct = mcp(Year = "Tukey") # Turkey HSD Test
+)
+
+summary(post_test)
+```
+
+Now lets consider the variation across cruises within individual years
+```{r Seasonal ANOVA}
+GL <- inner_join(GL, cruises_ocean_time_all, by = c("Date"))
+GL <- GL %>% dplyr::select(-c(ocean_time, cruise))
+# visualize the data
+ggplot(data = GL, aes(x = week, y = Density, color = factor(week), group = week, shape = Year)) +
+  geom_jitter(alpha = 0.5) +
+  geom_boxplot(color = "black", fill = NA) +
+  theme_classic()
+
+# run an anova on the data
+GL.aov <- aov(Density ~ week, data = GL)
+summary(GL.aov) # there are no significant differences between the weeks
+
+# CoMu
+CM <- inner_join(CM, cruises_ocean_time_all, by = c("Date"))
+CM <- CM %>% dplyr::select(-c(ocean_time, cruise))
+# visualize the data
+ggplot(data = CM, aes(x = week, y = Density, color = factor(week), group = week, shape = Year)) +
+  geom_jitter(alpha = 0.5) +
+  geom_boxplot(color = "black", fill = NA) +
+  theme_classic()
+
+# run an anova on the data
+CM$week <- factor(CM$week)
+CM.aov <- aov(Density ~ week, data = CM)
+summary(CM.aov) # there are significant differences between the weeks
+
+# post-hoc testing
+post_test <- glht(CM.aov,
+  linfct = mcp(week = "Tukey") # Turkey HSD Test
+)
+
+summary(post_test)
+# first week of october appears to be nearly significantly different from the other weeks of the season
+```
+
+
+## FORMAT TRAINING DATA
+# Compile environmental data for cruise dates
+This code will compile the static and dynamic variables on each day that MBM transects were conducted from 2017-2020 and match them with the observed species densities from those days: 
+```{r Complile Cruise Data (Training)}
+trans_all <- inner_join(env_all, transect_zones) # apply transect zones
+trans_all <- trans_all %>% filter(!is.na(transect)) # remove grid cells off transect
+trans_all$Date <- as.character(trans_all$Date)
+
+trans_all <- trans_all %>% group_by(Date, transect) %>% summarise(
+  bathy = mean(bathy),
+  topog = mean(topog),
+  dist = mean(dist),
+  channel_width = mean(channel_width),
+  tcur = mean(tcur)
+)
+
+trans_all <- trans_all %>% rename(
+  Zone = transect
+)
+
+trans_all$Zone <- factor(trans_all$Zone)
+
+## add LiveOcean Data ##
+trans_all <- left_join(trans_all, LO_phyto)
+trans_all <- left_join(trans_all, LO_temp)
+trans_all <- left_join(trans_all, LO_salt)
+
+trans_all$Date <- lubridate::ymd(trans_all$Date)
+
+trans_1 <- inner_join(trans_all, MBM_master, by = c("Date", "Zone"))
+trans_1$dup <- trans_1$Date
+trans_1 <- trans_1 %>% separate(dup, into = c("Year", "Month", "Day"), sep = "([-])")
+trans_1 <- trans_1 %>% dplyr::select(-c(Month, Day))
+trans_1$Year <- factor(trans_1$Year)
+```
+
+# Add presence vs. absence data for marine mammals for logistic regression
+This code separates out the zones were MBM were present and assigns them to factor "1". Likewise, zones with none or a particular species are assigned to "0":
+
+```{r Presence vs. Absence}
+Present <- trans_1 %>% filter(Density > 0)
+Present$PA <- c(rep(1, times = nrow(Present)))
+
+Absent <- trans_1 %>% filter(Density == 0)
+Absent$PA <- c(rep(0, times = nrow(Absent)))
+
+trans_1 <- rbind(Present, Absent)
+trans_1$PA <- as.factor(trans_1$PA)
+rm(Present, Absent)
+```
+
+# delta tide height
+``` {r dth}
+trans_1 <- left_join(trans_1, delta.tide.height[,c(4,6)], by = c("Date"))
+```
+
+# scale training data 
+```{r scale training}
+scaled_vars <- scale(trans_1[,c(3:11,18)])
+trans_1 <- trans_1 %>% dplyr::select(c("Date", "Year", "Zone", "species", "Density", "Effort_sqkm", "PA", "count"))
+trans_1 <- cbind(trans_1, scaled_vars)
+trans_1 <- trans_1 %>% rename(effort = Effort_sqkm, dth = net_move)
+rm(scaled_vars)
+```
+
+# cruise number
+```{r cruise number}
+trans_1 <- left_join(trans_1, cruises_ocean_time_all[,c(1,4)])
+trans_1$cruise.gen <- factor(trans_1$cruise.gen)
+```
+
+## LOGISTIC REGRESSION MODELS
+# Harbor Seals
+This chunk performs logistic regression model selection for harbor seals:
+```{r Logit: Harbor Seal}
+HSeal <- filter(trans_1, species == "HSeal")
+# which zone has the most harbor seals
+ggplot(data = HSeal, aes(x = Zone)) + 
+  geom_bar(aes(fill = PA)) + 
+  facet_wrap(~Species_code) +
+  theme_classic()
+# set highest zone as base
+HSeal$Zone <- relevel(HSeal$Zone, ref = 4)
+
+HS01 <- glm(PA ~ tcur, data= HSeal, family = "binomial")
+HS02 <- glm(PA ~ channel_width, data= HSeal, family = "binomial")
+HS03 <- glm(PA ~ dist, data= HSeal, family = "binomial") 
+HS04 <- glm(PA ~ topog, data= HSeal, family = "binomial") 
+HS05 <- glm(PA ~ bathy, data= HSeal, family = "binomial")
+HS06 <- glm(PA ~ phyto, data= HSeal, family = "binomial")
+HS07 <- glm(PA ~ temp, data= HSeal, family = "binomial")
+HS08 <- glm(PA ~ temp_sd, data= HSeal, family = "binomial")
+HS09 <- glm(PA ~ salt, data= HSeal, family = "binomial")
+
+# Examine model results
+summary(HS01)
+summary(HS02)
+summary(HS03)
+summary(HS04)
+summary(HS05)
+summary(HS06)
+summary(HS07)
+summary(HS08)
+summary(HS09)
+
+# selecting the best model
+vec_AIC <- AIC(HS01, HS02, HS03, HS04, HS05, HS06, HS07, HS08, HS09)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+```
+Bathymetry was the best single predictor of harbor seal habitat use
+
+```{r Logit HSeal: Variable Effects}
+# plotting the linear model HS01
+range(HSeal$tcur)
+xweight <- seq(3, 7.5, 0.01)
+yweight <- predict(HS01, list(tcur = xweight),type="response")
+
+plot(xweight, yweight, xlab = "Tidal Exchange (meters)", ylab = "Probability of Harbor Seal Occupancy")
+
+# plotting the linear model HS02
+range(HSeal$channel_width)
+xweight <- seq(2800, 28000, 100)
+yweight <- predict(HS02, list(channel_width = xweight),type="response")
+
+plot(xweight, yweight, xlab = "Channel Width (meters)", ylab = "Probability of Harbor Seal Occupancy")
+
+# plotting the linear model HS03
+range(HSeal$dist)
+xweight <- seq(500, 2000, 10)
+yweight <- predict(HS03, list(dist = xweight),type="response")
+
+plot(xweight, yweight, xlab = "Distance from Shore (meters)", ylab = "Probability of Harbor Seal Occupancy")
+
+# plotting the linear model HS04
+range(HSeal$topog)
+xweight <- seq(13, 35, 0.1)
+yweight <- predict(HS04, list(topog = xweight),type="response")
+
+plot(xweight, yweight, xlab = "Standard Deviation of Bathymetry (meters)", ylab = "Probability of Harbor Seal Occupancy")
+
+
+# plotting the linear model HS05
+range(HSeal$bathy)
+xweight <- seq(-105, -55, 0.5)
+yweight <- predict(HS05, list(bathy = xweight),type="response")
+
+plot(xweight, yweight, xlab = "Bathymetry (meters)", ylab = "Probability of Harbor Seal Occupancy")
+
+# plotting the linear model HS06
+range(HSeal$phyto)
+xweight <- seq(0.5, 2.5, 0.01)
+yweight <- predict(HS06, list(phyto = xweight),type="response")
+
+plot(xweight, yweight, xlab = "Phytoplankton Concentration", ylab = "Probability of Harbor Seal Occupancy")
+
+# plotting the linear model HS07
+range(HSeal$temp)
+xweight <- seq(8.5, 12, 0.01)
+yweight <- predict(HS07, list(temp = xweight),type="response")
+
+plot(xweight, yweight, xlab = "SST (ºC)", ylab = "Probability of Harbor Seal Occupancy")
+
+# plotting the linear model HS08
+range(HSeal$temp_sd)
+xweight <- seq(0, 0.2, 0.001)
+yweight <- predict(HS08, list(temp_sd = xweight),type="response")
+
+plot(xweight, yweight, xlab = "SST Standard Deviation (ºC)", ylab = "Probability of Harbor Seal Occupancy")
+
+# plotting the linear model HS09
+range(HSeal$salt)
+xweight <- seq(28, 32, 0.01)
+yweight <- predict(HS09, list(salt = xweight),type="response")
+
+plot(xweight, yweight, xlab = "Salinity (PSU)", ylab = "Probability of Harbor Seal Occupancy")
+```
+
+# HSeal: Forward Selection 2
+Selecting the second most influential variable for Harbor Seals:
+
+```{r Logit HSeal: Forward Selection 2}
+rm(HS01, HS02, HS03, HS04, HS06, HS07, HS08, HS09) # cleanup
+
+HS1.1 <- glm(PA ~ bathy + topog, data= HSeal, family = "binomial")
+HS1.2 <- glm(PA ~ bathy + dist, data= HSeal, family = "binomial")
+HS1.3 <- glm(PA ~ bathy + channel_width, data= HSeal, family = "binomial")
+HS1.4 <- glm(PA ~ bathy + tcur, data= HSeal, family = "binomial")
+HS1.5 <- glm(PA ~ bathy + phyto, data= HSeal, family = "binomial")
+HS1.6 <- glm(PA ~ bathy + temp, data= HSeal, family = "binomial")
+HS1.7 <- glm(PA ~ bathy + temp_sd, data= HSeal, family = "binomial")
+HS1.8 <- glm(PA ~ bathy + salt, data= HSeal, family = "binomial")
+
+# examining model results
+summary(HS1.1)
+summary(HS1.2)
+summary(HS1.3)
+summary(HS1.4)
+summary(HS1.5)
+summary(HS1.6)
+summary(HS1.7)
+summary(HS1.8)
+
+# calculating AIC weights
+vec_AIC <- AIC(HS05, HS1.1, HS1.2, HS1.3, HS1.4, HS1.5, HS1.6, HS1.7, HS1.8)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+rm(HS1.1, HS1.2, HS1.4, HS1.5, HS1.6, HS1.7, HS1.8)
+```
+Channel width is the next best predictor of harbor seal presence
+
+# HSeal: Forward Selection 3
+This chunk explores the thrid best predictor for harbor seals
+
+```{r Logit HSeal: Forward Selection 3}
+HS1.1.1 <- glm(PA ~ bathy + channel_width + topog, data= HSeal, family = "binomial")
+HS1.1.2 <- glm(PA ~ bathy + channel_width + tcur, data= HSeal, family = "binomial")
+HS1.1.3 <- glm(PA ~ bathy + channel_width + phyto, data= HSeal, family = "binomial")
+HS1.1.4 <- glm(PA ~ bathy + channel_width + temp, data= HSeal, family = "binomial")
+HS1.1.5 <- glm(PA ~ bathy + channel_width + temp_sd, data= HSeal, family = "binomial")
+HS1.1.6 <- glm(PA ~ bathy + channel_width + salt, data= HSeal, family = "binomial")
+
+# examining model results
+summary(HS1.1.1)
+summary(HS1.1.2)
+summary(HS1.1.3)
+summary(HS1.1.4)
+summary(HS1.1.5)
+summary(HS1.1.6)
+
+# calculating AIC weights
+vec_AIC <- AIC(HS1.3, HS1.1.1, HS1.1.2, HS1.1.3, HS1.1.4, HS1.1.5, HS1.1.6)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+rm(HS1.1.1, HS1.1.2, HS1.1.4, HS1.1.5, HS1.1.6)
+```
+Phytoplankton is the next best predictor 
+
+# HSeal: Forward Selection 4
+```{r Logit HSeal: Forward Selection 4}
+HS1.1.1.1 <- glm(PA ~ bathy + channel_width + phyto + topog, data= HSeal, family = "binomial")
+HS1.1.1.2 <- glm(PA ~ bathy + channel_width + phyto + tcur, data= HSeal, family = "binomial")
+HS1.1.1.3 <- glm(PA ~ bathy + channel_width + phyto + temp_sd, data= HSeal, family = "binomial")
+
+# calculating AIC weights
+vec_AIC <- AIC(HS1.1.3, HS1.1.1.1, HS1.1.1.2, HS1.1.1.3)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(HS1.1.1.2)
+
+rm(HS1.1.1.1, HS1.1.1.3)
+```
+Tidal current amplitude is the next best predictor but it is not statistically significant. Based on previous PEF projects and literature from cattle pass, I think I will include it anyway and wait for someone to tell me otherwise. 
+
+# HSeal: Forward Selection 5
+```{r Logit HSeal: Forward Selection 5}
+HS0.1 <- glm(PA ~ bathy + channel_width + phyto + tcur + bathy:channel_width, data= HSeal, family = "binomial")
+HS0.2 <- glm(PA ~ bathy + channel_width + phyto + tcur + bathy:phyto, data= HSeal, family = "binomial")
+HS0.3 <- glm(PA ~ bathy + channel_width + phyto + tcur + bathy:tcur, data= HSeal, family = "binomial")
+HS0.4 <- glm(PA ~ bathy + channel_width + phyto + tcur + channel_width:phyto, data= HSeal, family = "binomial")
+HS0.4 <- glm(PA ~ bathy + channel_width + phyto + tcur + channel_width:tcur, data= HSeal, family = "binomial")
+HS0.5 <- glm(PA ~ bathy + channel_width + phyto + tcur + phyto:tcur, data= HSeal, family = "binomial")
+
+# examining model results
+summary(HS0.1)
+summary(HS0.2)
+summary(HS0.3)
+summary(HS0.4)
+summary(HS0.5)
+
+rm(HS0.1, HS0.2, HS0.3)
+```
+None of these interaction terms made the model much better and so I'll leave them out.
+------------
+| HS1.1.1.2 |
+------------
+
+# Model Fit
+```{r Logit HSeal: Assess Model Fit}
+# Pseudo R^2 for HSeal Model
+nullmod <- glm(PA ~ 1, data = HSeal, family="binomial")
+1-logLik(HS1.1.1.2)/logLik(nullmod)
+
+# confidence intervals for model coefficients
+confint.default(HS1.1.1.2)
+
+## odds ratios and confidence intervals ##
+exp(cbind(OR = coef(HS1.1.1.2), confint.default(HS1.1.1.2)))
+
+## analyzing predicted probabilities of each variable ##
+newdata1 <- with(HSeal, data.frame(bathy = mean(bathy), channel_width = mean(channel_width), phyto = mean(phyto), tcur = seq(-1, 2, 0.05))) # choose varieble to model
+newdata2 <- cbind(newdata1, predict(HS1.1.1.2, newdata = newdata1, type = "link", se = TRUE))
+newdata2 <- within(newdata2, {
+  PredictedProb <- plogis(fit)
+  LL <- plogis(fit - (1.96 * se.fit))
+  UL <- plogis(fit + (1.96 * se.fit))
+})
+ggplot(newdata2, aes(x = tcur, y = PredictedProb)) + 
+  geom_ribbon(aes(ymin = LL, ymax = UL), alpha = 0.2) + 
+  geom_line() +
+  xlab("Tidal Current Amplitude (knots)") +
+  ylab("Predicted Probability of Presence") +
+  theme_classic()
+
+newdata1 <- with(HSeal, data.frame(bathy = mean(bathy), channel_width = mean(channel_width), phyto = seq(-2, 4, 0.05), tcur = mean(tcur))) # choose varieble to model
+newdata2 <- cbind(newdata1, predict(HS1.1.1.2, newdata = newdata1, type = "link", se = TRUE))
+newdata2 <- within(newdata2, {
+  PredictedProb <- plogis(fit)
+  LL <- plogis(fit - (1.96 * se.fit))
+  UL <- plogis(fit + (1.96 * se.fit))
+})
+ggplot(newdata2, aes(x = phyto, y = PredictedProb)) + 
+  geom_ribbon(aes(ymin = LL, ymax = UL), alpha = 0.2) + 
+  geom_line() +
+  xlab("Phytoplankton Concentration (µmol/L)") +
+  ylab("Predicted Probability of Presence") +
+  theme_classic()
+
+newdata1 <- with(HSeal, data.frame(bathy = mean(bathy), channel_width = seq(-1, 2.5, 0.05), phyto = mean(phyto), tcur = mean(tcur))) # choose varieble to model
+newdata2 <- cbind(newdata1, predict(HS1.1.1.2, newdata = newdata1, type = "link", se = TRUE))
+newdata2 <- within(newdata2, {
+  PredictedProb <- plogis(fit)
+  LL <- plogis(fit - (1.96 * se.fit))
+  UL <- plogis(fit + (1.96 * se.fit))
+})
+ggplot(newdata2, aes(x = channel_width, y = PredictedProb)) + 
+  geom_ribbon(aes(ymin = LL, ymax = UL), alpha = 0.2) + 
+  geom_line() +
+  xlab("Channel Width (meters)") +
+  ylab("Predicted Probability of Presence") +
+  theme_classic()
+
+newdata1 <- with(HSeal, data.frame(bathy = seq(-2, 2, 0.05), channel_width = mean(channel_width), phyto = mean(phyto), tcur = mean(tcur))) # choose varieble to model
+newdata2 <- cbind(newdata1, predict(HS1.1.1.2, newdata = newdata1, type = "link", se = TRUE))
+newdata2 <- within(newdata2, {
+  PredictedProb <- plogis(fit)
+  LL <- plogis(fit - (1.96 * se.fit))
+  UL <- plogis(fit + (1.96 * se.fit))
+})
+ggplot(newdata2, aes(x = bathy, y = PredictedProb)) + 
+  geom_ribbon(aes(ymin = LL, ymax = UL), alpha = 0.2) + 
+  geom_line() +
+  xlab("Depth (meters)") +
+  ylab("Predicted Probability of Presence") +
+  theme_classic()
+
+```
+
+# Harbor Porpoise
+This chunk performs logistic regression model selection for harbor seals:
+
+```{r Logit HPorp}
+HPorp <- filter(trans_1, species == "HPorp")
+
+# which zone has the most harbor porpoise
+ggplot(data = HPorp, aes(x = Zone)) + 
+  geom_bar(aes(fill = PA)) + 
+  facet_wrap(~Species_code) +
+  theme_classic()
+# set highest zone as base
+HPorp$Zone <- relevel(HPorp$Zone, ref = 2)
+
+HP01 <- glm(PA ~ tcur, data= HPorp, family = "binomial")
+HP02 <- glm(PA ~ channel_width, data= HPorp, family = "binomial")
+HP03 <- glm(PA ~ dist, data= HPorp, family = "binomial") 
+HP04 <- glm(PA ~ topog, data= HPorp, family = "binomial") 
+HP05 <- glm(PA ~ bathy, data= HPorp, family = "binomial")
+HP06 <- glm(PA ~ phyto, data= HPorp, family = "binomial")
+HP07 <- glm(PA ~ temp, data= HPorp, family = "binomial")
+HP08 <- glm(PA ~ temp_sd, data= HPorp, family = "binomial")
+HP09 <- glm(PA ~ salt, data= HPorp, family = "binomial")
+
+# Examine model results
+summary(HP01)
+summary(HP02)
+summary(HP03)
+summary(HP04)
+summary(HP05)
+summary(HP06)
+summary(HP07)
+summary(HP08)
+summary(HP09)
+
+# selecting the best model
+vec_AIC <- AIC(HP01, HP02, HP03, HP04, HP05, HP06, HP07, HP08, HP09)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+```
+Distance from shore appears to tbe the best predictor by a narrow margin
+
+```{r Logit HPorp: Variable Effects}
+# plotting the linear model HP01
+range(HPorp$tcur)
+xweight <- seq(3, 7.5, 0.01)
+yweight <- predict(HP01, list(tcur = xweight),type="response")
+
+plot(xweight, yweight, xlab = "Tidal Current (knots)", ylab = "Probability of Harbor Porpoise Presence")
+
+# plotting the linear model HP02
+range(HPorp$channel_width)
+xweight <- seq(2800, 28000, 100)
+yweight <- predict(HP02, list(channel_width = xweight),type="response")
+
+plot(xweight, yweight, xlab = "Channel Width (meters)", ylab = "Probability of Harbor Porpoise Presence")
+
+# plotting the linear model HP03
+range(HPorp$dist)
+xweight <- seq(500, 2000, 10)
+yweight <- predict(HP03, list(dist = xweight),type="response")
+
+plot(xweight, yweight, xlab = "Distance from Shore (meters)", ylab = "Probability of Harbor Porpoise Presence")
+
+# plotting the linear model HP04
+range(HPorp$topog)
+xweight <- seq(13, 35, 0.1)
+yweight <- predict(HP04, list(topog = xweight),type="response")
+
+plot(xweight, yweight, xlab = "Standard Deviation of Bathymetry (meters)", ylab = "Probability of Harbor Porpoise Presence")
+
+
+# plotting the linear model HP05
+range(HPorp$bathy)
+xweight <- seq(-105, -55, 0.5)
+yweight <- predict(HP05, list(bathy = xweight),type="response")
+
+plot(xweight, yweight, xlab = "Bathymetry (meters)", ylab = "Probability of Harbor Porpoise Presence")
+
+# plotting the linear model HP06
+range(HPorp$phyto)
+xweight <- seq(0.5, 2.5, 0.01)
+yweight <- predict(HP06, list(phyto = xweight),type="response")
+
+plot(xweight, yweight, xlab = "Phytoplankton Concentration", ylab = "Probability of Harbor Porpoise Presence")
+
+# plotting the linear model HS07
+range(HPorp$temp)
+xweight <- seq(8.5, 12, 0.01)
+yweight <- predict(HP07, list(temp = xweight),type="response")
+
+plot(xweight, yweight, xlab = "SST (ºC)", ylab = "Probability of Harbor Porpoise Presence")
+
+# plotting the linear model HS08
+range(HPorp$temp_sd)
+xweight <- seq(0, 0.2, 0.001)
+yweight <- predict(HP08, list(temp_sd = xweight),type="response")
+
+plot(xweight, yweight, xlab = "SST Standard Deviation (ºC)", ylab = "Probability of Harbor Porpoise Presence")
+
+# plotting the linear model HS09
+range(HPorp$salt)
+xweight <- seq(28, 32, 0.01)
+yweight <- predict(HP09, list(salt = xweight),type="response")
+
+plot(xweight, yweight, xlab = "Salinity (PSU)", ylab = "Probability of Harbor Porpoise Presence")
+
+```
+Distance from shore seems to be the best single predictor - this may be correlated with our ability to sight harbor porpoises against larger sea-scapes.
+
+```{r Logit HPorp: Forward Selection 2}
+rm(HP01, HP02, HP04, HP05, HP06, HP07, HP08, HP09) # cleanup
+
+HP1.1 <- glm(PA ~ dist + bathy, data= HPorp, family = "binomial")
+HP1.2 <- glm(PA ~ dist + topog, data= HPorp, family = "binomial")
+HP1.3 <- glm(PA ~ dist + tcur, data= HPorp, family = "binomial")
+HP1.4 <- glm(PA ~ dist + phyto, data= HPorp, family = "binomial")
+HP1.5 <- glm(PA ~ dist + temp, data= HPorp, family = "binomial")
+HP1.6 <- glm(PA ~ dist + temp_sd, data= HPorp, family = "binomial")
+HP1.7 <- glm(PA ~ dist + salt, data= HPorp, family = "binomial")
+
+# examining model results
+summary(HP1.1)
+summary(HP1.2)
+summary(HP1.3)
+summary(HP1.4)
+summary(HP1.5)
+summary(HP1.6)
+summary(HP1.7)
+
+# selecting the best model
+vec_AIC <- AIC(HP03, HP1.1, HP1.2, HP1.3, HP1.4, HP1.5, HP1.6, HP1.7)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+rm(HP1.1, HP1.2, HP1.3, HP1.4, HP1.5, HP1.6, HP1.7)
+```
+None of these predictors were statistically significant
+--------
+| HP03 |
+--------
+
+# Assessing model fit
+```{r Logit HPorp: Assess Model Fit}
+# Pseudo R^2 for HSeal Model
+nullmod <- glm(PA ~ 1, data = HPorp, family="binomial")
+1-logLik(HP03)/logLik(nullmod)
+
+# confidence intervals for model coefficients
+confint.default(HP03)
+
+## odds ratios and confidence intervals ##
+exp(cbind(OR = coef(HP03), confint.default(HP03)))
+
+## analyzing predicted probabilities of each variable ##
+newdata1 <- with(HPorp, data.frame(dist = seq(-2, 2, 0.05)))
+newdata2 <- cbind(newdata1, predict(HP03, newdata = newdata1, type = "link", se = TRUE))
+newdata2 <- within(newdata2, {
+  PredictedProb <- plogis(fit)
+  LL <- plogis(fit - (1.96 * se.fit))
+  UL <- plogis(fit + (1.96 * se.fit))
+})
+
+ggplot(newdata2, aes(x = dist, y = PredictedProb)) + 
+  geom_ribbon(aes(ymin = LL, ymax = UL), linetype = "dashed", alpha = 0.2) + 
+  geom_line() +
+  xlab("Distance from Shore (m)") +
+  ylab("Predicted Probability of Presence") +
+  theme_classic()
+
+```
+# Predictive surfaces for marine mammals
+This chunk will make daily predictions of marine mammal densities across the study area and then average them into a seasonal estimate of habitat use:
+
+```{r Predicted Habitat Map}
+## Predicting Across Study Grid Using Environmental Variables ##
+## HARBOR SEAL ##
+HS_Predicted_Presence <- env_all
+scaled.vars <- scale(HS_Predicted_Presence[,c(6:10,12:15)])
+HS_Predicted_Presence <- HS_Predicted_Presence %>% dplyr::select(c("grid_id", "lat_deg", "long_deg", "Date"))
+HS_Predicted_Presence <- cbind(HS_Predicted_Presence, scaled.vars)
+rm(scaled.vars)
+
+
+HS_Predicted_Presence$predicted <- predict(HS1.1.3, newdata = HS_Predicted_Presence, type = "response")
+
+HS_Predicted_Presence <- HS_Predicted_Presence %>% group_by(grid_id) %>% dplyr::summarise(lat_deg = mean(lat_deg), long_deg = mean(long_deg), sd = sd(predicted), predicted = mean(predicted))
+
+HS_Predicted_Presence <- HS_Predicted_Presence %>% mutate(CV = sd/predicted)
+
+HS_Predicted_Presence <- HS_Predicted_Presence %>% st_as_sf(coords = c("long_deg", "lat_deg"), crs = 4326)
+
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = HS_Predicted_Presence, aes(fill = predicted), shape = 22, size = 2.5) +
+  scale_fill_viridis(option = "magma", name = "Probability") +
+  ggtitle("Harbor Seal Predicted Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+## HARBOR PORPOISE ##
+HP_Predicted_Presence <- env_all
+scaled.vars <- scale(HP_Predicted_Presence[,c(6:10,12:15)])
+HP_Predicted_Presence <- HP_Predicted_Presence %>% dplyr::select(c("grid_id", "lat_deg", "long_deg", "Date"))
+HP_Predicted_Presence <- cbind(HP_Predicted_Presence, scaled.vars)
+rm(scaled.vars)
+
+HP_Predicted_Presence$predicted <- predict(HP03, newdata = HP_Predicted_Presence, type = "response")
+
+HP_Predicted_Presence <- HP_Predicted_Presence %>% group_by(grid_id) %>% summarise(lat_deg = mean(lat_deg), long_deg = mean(long_deg), sd = sd(predicted), predicted = mean(predicted))
+
+HP_Predicted_Presence <- HP_Predicted_Presence %>% mutate(CV = sd/predicted)
+
+HP_Predicted_Presence <- HP_Predicted_Presence %>% filter(!is.na(predicted))
+
+HP_Predicted_Presence <- HP_Predicted_Presence %>% st_as_sf(coords = c("long_deg", "lat_deg"), crs = 4326)
+
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = HP_Predicted_Presence, aes(fill = predicted), shape = 22, size = 2.5) +
+  scale_fill_viridis(option = "magma", name = "Probability") +
+  ggtitle("Harbor Porpoise Predicted Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# COMBINED #
+HS_Predicted_Presence$species <- "HS"
+HP_Predicted_Presence$species <- "HP"
+
+MM <- rbind(HS_Predicted_Presence, HP_Predicted_Presence)
+
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = MM, aes(fill = predicted), shape = 22, size = 2.5) +
+  scale_fill_viridis(option = "magma", name = "") +
+  scale_x_continuous(breaks = c(-123.2, -123, -122.8)) +
+  facet_wrap(~species) +
+  coord_sf() +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+```
+
+## GAM 2.0 - OFFSET POISSON DISTRIBUTION
+Using density data for model training violates a key assumption of the Poisson distribution, since density does not have to be an integer value. In order to better meet the assumptions of the Poisson distribution, we will instead use raw species counts in each zone as the training data and add an "offset term" for zonal area or survey effort. This requires some restructuring of the training data. 
+
+## MODEL SELECTION 2.O
+# Glaucous Gull 
+```{r GAM2 GL}
+GL <- filter(trans_1, species == "GL")
+CoMu <- filter(trans_1, species == "CoMu")
+CM_count <- CoMu %>% dplyr::select(c("count"))
+CM_count <- CM_count %>% rename(CM = count)
+GL <- cbind(GL, CM_count)
+
+GL01 <- gam(count ~ offset(log(effort)) + s(phyto, k=4), family = poisson(link = "log"), data=GL)
+GL02 <- gam(count ~ offset(log(effort)) + s(temp, k=4), family = poisson(link = "log"), data=GL)
+GL03 <- gam(count ~ offset(log(effort)) + s(temp_sd, k=4), family = poisson(link = "log"), data=GL)
+GL04 <- gam(count ~ offset(log(effort)) + s(salt, k=4), family = poisson(link = "log"), data=GL)
+GL05 <- gam(count ~ offset(log(effort)) + s(dth, k=4), family = poisson(link = "log"), data=GL)
+GL06 <- gam(count ~ offset(log(effort)) + s(Zone, bs="re"), family = poisson(link = "log"), data=GL)
+GL07 <- gam(count ~ offset(log(effort)) + s(Year, bs="re"), family = poisson(link = "log"), data=GL)
+GL08 <- gam(count ~ offset(log(effort)) + s(cruise.gen, bs="re"), family = poisson(link = "log"), data=GL)
+
+
+# selecting the best model
+vec_AIC <- AIC(GL01, GL02, GL03, GL04, GL05, GL06, GL07, GL08)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(GL06)
+rm(GL01, GL02, GL03, GL04, GL05, GL07, GL08)
+```
+
+# GL: Forward Selection 2.2
+```{r GAM2 GL:FS2}
+GL1.01 <- gam(count ~ offset(log(effort)) + s(phyto,k=4) + s(Zone, bs="re"), family = poisson(link = "log"), data=GL)
+GL1.02 <- gam(count ~ offset(log(effort)) + s(temp,k=4) + s(Zone, bs="re"), family = poisson(link = "log"), data=GL)
+GL1.03 <- gam(count ~ offset(log(effort)) + s(temp_sd,k=4) + s(Zone, bs="re"), family = poisson(link = "log"), data=GL)
+GL1.04 <- gam(count ~ offset(log(effort)) + s(salt,k=4) + s(Zone, bs="re"), family = poisson(link = "log"), data=GL)
+GL1.05 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(Zone, bs="re"), family = poisson(link = "log"), data=GL)
+GL1.06 <- gam(count ~ offset(log(effort)) + s(Zone, bs="re") + s(Year,bs="re"), family = poisson(link = "log"), data=GL)
+GL1.07 <- gam(count ~ offset(log(effort)) + s(Zone, bs="re") + s(cruise.gen,bs="re"), family = poisson(link = "log"), data=GL)
+
+# selecting the best model
+vec_AIC <- AIC(GL06, GL1.01, GL1.02, GL1.03, GL1.04, GL1.05, GL1.06, GL1.07)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(GL1.06)
+plot(GL1.03)
+
+rm(GL1.01, GL1.02, GL1.03, GL1.04, GL1.05, GL1.07)
+```
+
+# GL: Forward Selection 2.3
+```{r GAM2 GL:FS3}
+GL1.1.01 <- gam(count ~ offset(log(effort)) + s(phyto,k=4) + s(Zone, bs="re") + s(Year,bs="re"), family = poisson(link = "log"), data=GL)
+GL1.1.02 <- gam(count ~ offset(log(effort)) + s(temp,k=4) + s(Zone, bs="re") + s(Year,bs="re"), family = poisson(link = "log"), data=GL)
+GL1.1.03 <- gam(count ~ offset(log(effort)) + s(temp_sd,k=4) + s(Zone, bs="re") + s(Year,bs="re"), family = poisson(link = "log"), data=GL)
+GL1.1.04 <- gam(count ~ offset(log(effort)) + s(salt,k=4) + s(Zone, bs="re") + s(Year,bs="re"), family = poisson(link = "log"), data=GL)
+GL1.1.05 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(Zone, bs="re") + s(Year,bs="re"), family = poisson(link = "log"), data=GL)
+GL1.1.06 <- gam(count ~ offset(log(effort)) + s(Zone, bs="re") + s(Year,bs="re") + s(cruise.gen,bs="re"), family = poisson(link = "log"), data=GL)
+
+# selecting the best model
+vec_AIC <- AIC(GL1.06, GL1.1.01, GL1.1.02, GL1.1.03, GL1.1.04, GL1.1.05, GL1.1.06)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(GL1.1.06)
+
+rm(GL1.1.01, GL1.1.02, GL1.1.03, GL1.1.04, GL1.1.05)
+```
+
+# GL: Forward Selection 2.4
+```{r GAM2 GL:FS4}
+GL1.1.1.01 <- gam(count ~ offset(log(effort)) + s(phyto,k=4) + s(Zone, bs="re") + s(Year,bs="re") + s(cruise.gen,bs="re"), family = poisson(link = "log"), data=GL)
+GL1.1.1.02 <- gam(count ~ offset(log(effort)) + s(temp,k=4) + s(Zone, bs="re") + s(Year,bs="re") + s(cruise.gen,bs="re"), family = poisson(link = "log"), data=GL)
+GL1.1.1.03 <- gam(count ~ offset(log(effort)) + s(temp_sd,k=4) + s(Zone, bs="re") + s(Year,bs="re") + s(cruise.gen,bs="re"), family = poisson(link = "log"), data=GL)
+GL1.1.1.04 <- gam(count ~ offset(log(effort)) + s(salt,k=4) + s(Zone, bs="re") + s(Year,bs="re") + s(cruise.gen,bs="re"), family = poisson(link = "log"), data=GL)
+GL1.1.1.05 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(Zone, bs="re") + s(Year,bs="re") + s(cruise.gen,bs="re"), family = poisson(link = "log"), data=GL)
+
+# selecting the best model
+vec_AIC <- AIC(GL1.1.06, GL1.1.1.01, GL1.1.1.02, GL1.1.1.03, GL1.1.1.04, GL1.1.1.05)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(GL1.1.1.05)
+rm(GL1.1.1.01, GL1.1.1.02, GL1.1.1.03, GL1.1.1.04)
+```
+
+# GL: Forward Selection 2.5
+```{r GAM2 GL:FS5}
+GL1.1.1.1.01 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(phyto,k=4) + s(Zone, bs="re") + s(Year,bs="re") + s(cruise.gen,bs="re"), family = poisson(link = "log"), data=GL)
+GL1.1.1.1.02 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(temp,k=4) + s(Zone, bs="re") + s(Year,bs="re") + s(cruise.gen,bs="re"), family = poisson(link = "log"), data=GL)
+GL1.1.1.1.03 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(temp_sd,k=4) + s(Zone, bs="re") + s(Year,bs="re") + s(cruise.gen,bs="re"), family = poisson(link = "log"), data=GL)
+GL1.1.1.1.04 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(salt,k=4) + s(Zone, bs="re") + s(Year,bs="re") + s(cruise.gen,bs="re"), family = poisson(link = "log"), data=GL)
+
+# selecting the best model
+vec_AIC <- AIC(GL1.1.1.05, GL1.1.1.1.01, GL1.1.1.1.02, GL1.1.1.1.03, GL1.1.1.1.04)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(GL1.1.1.1.02)
+rm(GL1.1.1.1.01, GL1.1.1.1.03, GL1.1.1.1.04)
+```
+
+# GL: Forward Selection 2.6
+```{r GAM2 GL:FS6}
+GL1.1.1.1.1.01 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(temp,k=4) + s(salt,k=4) + s(Zone, bs="re") + s(Year,bs="re") + s(cruise.gen,bs="re"), family = poisson(link = "log"), data=GL)
+
+# selecting the best model
+vec_AIC <- AIC(GL1.1.1.1.02, GL1.1.1.1.1.01)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(GL1.1.1.1.1.01)
+```
+
+-----------------
+| GL1.1.1.1.1.01 |
+-----------------
+
+Calculate overdispersion parameter:
+```{r overdispersion}
+plot(residuals(GL1.1.1.1.1.01, type = "deviance")) # values should be close to zero - larger distance signifies outliers
+sum((residuals(GL1.1.1.1.1.01, type = "deviance"))^2) # residual deviance = sum of squared deviance residuals
+GL1.1.1.1.1.01
+```
+This value is much larger than 1 - suggests that a negative binomial distribution should be used.
+
+# Common Murre 
+```{r GAM2 CoMu}
+CoMu <- filter(trans_1, species == "CoMu")
+GL_count <- GL %>% dplyr::select(c("count"))
+GL_count <- GL_count %>% rename(GL = count)
+CoMu <- cbind(CoMu, GL_count)
+
+CM01 <- gam(count ~ offset(log(effort)) + s(phyto, k=4), family = poisson(link = "log"), data=CoMu)
+CM02 <- gam(count ~ offset(log(effort)) + s(temp, k=4), family = poisson(link = "log"), data=CoMu)
+CM03 <- gam(count ~ offset(log(effort)) + s(temp_sd, k=4), family = poisson(link = "log"), data=CoMu)
+CM04 <- gam(count ~ offset(log(effort)) + s(salt, k=4), family = poisson(link = "log"), data=CoMu)
+CM05 <- gam(count ~ offset(log(effort)) + s(dth, k=4), family = poisson(link = "log"), data=CoMu)
+CM06 <- gam(count ~ offset(log(effort)) + s(Zone, bs="re"), family = poisson(link = "log"), data=CoMu)
+CM07 <- gam(count ~ offset(log(effort)) + s(Year, bs="re"), family = poisson(link = "log"), data=CoMu)
+CM08 <- gam(count ~ offset(log(effort)) + s(cruise.gen, bs="re"), family = poisson(link = "log"), data=CoMu)
+
+
+# selecting the best model
+vec_AIC <- AIC(CM01, CM02, CM03, CM04, CM05, CM06, CM07, CM08)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(CM08)
+rm(CM01, CM02, CM04, CM05, CM06, CM07, CM03)
+```
+
+# CoMu: Forward Selection 2 
+```{r GAM2 CoMu:F2}
+CM1.01 <- gam(count ~ offset(log(effort)) + s(phyto,k=4) + s(cruise.gen, bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.02 <- gam(count ~ offset(log(effort)) + s(temp,k=4) + s(cruise.gen, bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.03 <- gam(count ~ offset(log(effort)) + s(temp_sd,k=4) + s(cruise.gen, bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.04 <- gam(count ~ offset(log(effort)) + s(salt,k=4) + s(cruise.gen, bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.05 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(cruise.gen, bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.06 <- gam(count ~ offset(log(effort)) + s(cruise.gen, bs="re") + s(Zone,bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.07 <- gam(count ~ offset(log(effort)) + s(cruise.gen, bs="re") + s(Year,bs="re"), family = poisson(link = "log"), data=CoMu)
+
+# selecting the best model
+vec_AIC <- AIC(CM08, CM1.01, CM1.02, CM1.03, CM1.04, CM1.05, CM1.06, CM1.07)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(CM1.06)
+rm(CM1.01, CM1.02, CM1.03, CM1.04, CM1.05, CM1.07)
+```
+
+# CoMu: Forward Selection 3 
+```{r GAM2 CoMu:F3}
+CM1.1.01 <- gam(count ~ offset(log(effort)) + s(phyto,k=4) + s(cruise.gen, bs="re") + s(Zone,bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.1.02 <- gam(count ~ offset(log(effort)) + s(temp,k=4) + s(cruise.gen, bs="re") + s(Zone,bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.1.03 <- gam(count ~ offset(log(effort)) + s(temp_sd,k=4) + s(cruise.gen, bs="re") + s(Zone,bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.1.04 <- gam(count ~ offset(log(effort)) + s(salt,k=4) + s(cruise.gen, bs="re") + s(Zone,bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.1.05 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(cruise.gen, bs="re") + s(Zone,bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.1.06 <- gam(count ~ offset(log(effort)) + s(cruise.gen, bs="re") + s(Zone,bs="re") + s(Year,bs="re"), family = poisson(link = "log"), data=CoMu)
+
+
+# selecting the best model
+vec_AIC <- AIC(CM1.06, CM1.1.01, CM1.1.02, CM1.1.03, CM1.1.04, CM1.1.05, CM1.1.06)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(CM1.1.05)
+rm(CM1.1.01, CM1.1.02, CM1.1.03, CM1.1.04, CM1.1.06)
+```
+
+# CoMu: Forward Selection 4 
+```{r GAM2 CoMu:F4}
+CM1.1.1.01 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(phyto,k=4) + s(cruise.gen, bs="re") + s(Zone,bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.1.1.02 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(temp,k=4) + s(cruise.gen, bs="re") + s(Zone,bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.1.1.03 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(temp_sd,k=4) + s(cruise.gen, bs="re") + s(Zone,bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.1.1.04 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(salt,k=4) + s(cruise.gen, bs="re") + s(Zone,bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.1.1.05 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(cruise.gen, bs="re") + s(Zone,bs="re") + s(Year,bs="re"), family = poisson(link = "log"), data=CoMu)
+
+# selecting the best model
+vec_AIC <- AIC(CM1.1.05, CM1.1.1.01, CM1.1.1.02, CM1.1.1.03, CM1.1.1.04, CM1.1.1.05)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(CM1.1.1.04)
+rm(CM1.1.1.01, CM1.1.1.02, CM1.1.1.03, CM1.1.1.05)
+```
+
+# CoMu: Forward Selection 5 
+```{r GAM2 CoMu:F5}
+CM1.1.1.1.01 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(salt,k=4) + s(temp,k=4) + s(cruise.gen, bs="re") + s(Zone,bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.1.1.1.02 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(salt,k=4) + s(temp_sd,k=4) + s(cruise.gen, bs="re") + s(Zone,bs="re"), family = poisson(link = "log"), data=CoMu)
+CM1.1.1.1.03 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(salt,k=4) + s(cruise.gen, bs="re") + s(Zone,bs="re") + s(Year,bs="re"), family = poisson(link = "log"), data=CoMu)
+
+# selecting the best model
+vec_AIC <- AIC(CM1.1.1.04, CM1.1.1.1.01, CM1.1.1.1.02, CM1.1.1.1.03)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(CM1.1.1.1.01)
+rm(CM1.1.1.1.02, CM1.1.1.1.03)
+```
+
+# CoMu: Forward Selection 6 
+```{r GAM2 CoMu:F6}
+CM1.1.1.1.1.01 <- gam(count ~ offset(log(effort)) + s(dth,k=4) + s(salt,k=4) + s(temp,k=4) + s(cruise.gen, bs="re") + s(Zone,bs="re") + s(Year,bs="re"), family = poisson(link = "log"), data=CoMu)
+
+# selecting the best model
+vec_AIC <- AIC(CM1.1.1.1.01, CM1.1.1.1.1.01)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(CM1.1.1.1.1.01)
+```
+
+-----------------
+| CM1.1.1.1.1.01 |
+-----------------
+
+Calculate overdispersion parameter:
+```{r CM overdispersion}
+sum((residuals(CM1.1.1.1.1.01, type = "deviance"))^2)
+CM1.1.1.1.1.01
+```
+This value is much larger than 1 - suggests that a negative binomial distribution should be used.
+
+## GENERALIZED ADDITIVE MODELS: NEGATIVE BINOMIAL
+# Glaucous Winged Gull
+This chunk performs generalized additive model selection for glaucous winged gulls:
+```{r GAM GL}
+# switch training data
+GL <- trans_1 %>% filter(species == "GL")
+interspec <- trans_1 %>% filter(species == "CoMu")
+GL$CM <- interspec$Density
+rm(interspec)
+
+nb.GL01 <- gam(Density ~ s(bathy, k=3), family = nb, data=GL)
+nb.GL02 <- gam(Density ~ s(topog, k=3), family = nb, data=GL)
+nb.GL03 <- gam(Density ~ s(dist, k=3), family = nb, data=GL)
+nb.GL04 <- gam(Density ~ s(channel_width, k=3), family = nb, data=GL)
+nb.GL05 <- gam(Density ~ s(tcur, k=3), family = nb, data=GL)
+nb.GL06 <- gam(Density ~ s(phyto, k=4), family = nb, data=GL)
+nb.GL07 <- gam(Density ~ s(temp, k=4), family = nb, data=GL)
+nb.GL08 <- gam(Density ~ s(temp_sd, k=4), family = nb, data=GL)
+nb.GL09 <- gam(Density ~ s(salt, k=4), family = nb, data=GL)
+
+# Examine model outputs
+summary(nb.GL01)
+summary(nb.GL02)
+summary(nb.GL03)
+summary(nb.GL04)
+summary(nb.GL05)
+summary(nb.GL06)
+summary(nb.GL07)
+summary(nb.GL08)
+summary(nb.GL09)
+summary(nb.GL10)
+
+# calculate AIC weights
+vec_AIC <- AIC(nb.GL01, nb.GL02, nb.GL03, nb.GL04, nb.GL05, nb.GL06, nb.GL07, nb.GL08, nb.GL09)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+```
+Bathymetry is the best single predictor after removing outlying data points and replacing with maximum non-outlier. Channel width is EXTREMELY CLOSE 
+
+```{r GAM GL: Variable Effects}
+plot(nb.GL01)
+plot(nb.GL02)
+plot(nb.GL03)
+plot(nb.GL04)
+plot(nb.GL05)
+plot(nb.GL06)
+plot(nb.GL07)
+plot(nb.GL08)
+plot(nb.GL09)
+```
+
+# GL: Forward Selection 2
+```{r GAM GL: Forward Selection 2}
+rm(nb.GL02, nb.GL03, nb.GL04, nb.GL05, nb.GL06, nb.GL07, nb.GL08, nb.GL09)
+
+nb.GL1.1 <- gam(Density ~ s(bathy, k=3) + s(topog, k = 3), family = nb, data=GL)
+nb.GL1.2 <- gam(Density ~ s(bathy, k=3) + s(dist, k = 3), family = nb, data=GL)
+nb.GL1.3 <- gam(Density ~ s(bathy, k=3) + s(channel_width, k = 3), family = nb, data=GL)
+nb.GL1.4 <- gam(Density ~ s(bathy, k=3) + s(tcur, k = 3), family = nb, data=GL)
+nb.GL1.5 <- gam(Density ~ s(bathy, k=3) + s(phyto, k = 4), family = nb, data=GL)
+nb.GL1.6 <- gam(Density ~ s(bathy, k=3) + s(temp, k = 4), family = nb, data=GL)
+nb.GL1.7 <- gam(Density ~ s(bathy, k=3) + s(temp_sd, k = 4), family = nb, data=GL)
+nb.GL1.8 <- gam(Density ~ s(bathy, k=3) + s(salt, k = 4), family = nb, data=GL)
+
+# examine model outputs
+summary(nb.GL1.1)
+summary(nb.GL1.2)
+summary(nb.GL1.3)
+summary(nb.GL1.4)
+summary(nb.GL1.5)
+summary(nb.GL1.6)
+summary(nb.GL1.7)
+summary(nb.GL1.8)
+
+# calculate AIC weights
+vec_AIC <- AIC(nb.GL01, nb.GL1.1, nb.GL1.2, nb.GL1.3, nb.GL1.4, nb.GL1.5, nb.GL1.6, nb.GL1.7, nb.GL1.8)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+rm(nb.GL1.1, nb.GL1.2, nb.GL1.4, nb.GL1.5, nb.GL1.6, nb.GL1.7, nb.GL1.8)
+
+plot(nb.GL1.3)
+```
+Based on these results, distance from shore is the next best predictor of glaucous gull habitat use
+
+# GL: Forward Selection 3
+```{r GAM GL: Forward Selection 3}
+nb.GL1.1.1 <- gam(Density ~ s(bathy, k=3) + s(dist, k = 3) + s(topog, k=3), family = nb, data=GL)
+nb.GL1.1.3 <- gam(Density ~ s(bathy, k=3) + s(dist, k = 3) + s(tcur, k=3), family = nb, data=GL)
+nb.GL1.1.4 <- gam(Density ~ s(bathy, k=3) + s(dist, k = 3) + s(phyto, k=4), family = nb, data=GL)
+nb.GL1.1.5 <- gam(Density ~ s(bathy, k=3) + s(dist, k = 3) + s(temp, k=4), family = nb, data=GL)
+nb.GL1.1.6 <- gam(Density ~ s(bathy, k=3) + s(dist, k = 3) + s(temp_sd, k=4), family = nb, data=GL)
+nb.GL1.1.7 <- gam(Density ~ s(bathy, k=3) + s(dist, k = 3) + s(salt, k=4), family = nb, data=GL)
+
+# examine model outputs
+summary(nb.GL1.1.1)
+summary(nb.GL1.1.3)
+summary(nb.GL1.1.4)
+summary(nb.GL1.1.5)
+summary(nb.GL1.1.6)
+summary(nb.GL1.1.7)
+
+# calculate AIC weights
+vec_AIC <- AIC(nb.GL1.3, nb.GL1.1.1, nb.GL1.1.3, nb.GL1.1.4, nb.GL1.1.5, nb.GL1.1.6, nb.GL1.1.7)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+rm(nb.GL1.1.1, nb.GL1.1.3, nb.GL1.1.4, nb.GL1.1.6, nb.GL1.1.7)
+```
+Temperature is the next best predictor
+
+# GL: Forward Selection 4
+```{r GAM GL: Forward Selection 4}
+nb.GL1.1.1.1 <- gam(Density ~ s(bathy, k=3) + s(dist, k = 3) + s(temp, k=4) + s(topog, k = 3), family = nb, data=GL)
+nb.GL1.1.1.2 <- gam(Density ~ s(bathy, k=3) + s(dist, k = 3) + s(temp, k=4) + s(tcur, k = 3), family = nb, data=GL)
+nb.GL1.1.1.3 <- gam(Density ~ s(bathy, k=3) + s(dist, k = 3) + s(temp, k=4) + s(salt, k = 3), family = nb, data=GL)
+nb.GL1.1.1.4 <- gam(Density ~ s(bathy, k=3) + s(dist, k = 3) + s(temp, k=4) + s(temp_sd, k = 3), family = nb, data=GL)
+
+# calculate AIC weights
+vec_AIC <- AIC(nb.GL1.1.5, nb.GL1.1.1.1, nb.GL1.1.1.2, nb.GL1.1.1.3, nb.GL1.1.1.4)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining models
+summary(nb.GL1.1.1.1)
+summary(nb.GL1.1.1.2)
+summary(nb.GL1.1.1.3)
+summary(nb.GL1.1.1.4)
+plot(nb.GL1.1.1.4)
+
+rm(nb.GL1.1.1.1, nb.GL1.1.1.2, nb.GL1.1.1.3, nb.GL1.1.1.4)
+```
+salinity is the next best predictor but it's not statistically significant or close
+
+# FS 5: Examining if interspecies effects are present
+```{r GAM GL: Forward Selection 5}
+nb.GL0.1 <- gam(Density ~ s(bathy, k=3) + s(dist, k = 3) + s(temp, k = 4) + s(CM, k=4), family = nb, data=GL)
+
+# calculate AIC weights
+vec_AIC <- AIC(nb.GL1.1.5, nb.GL0.1)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(nb.GL0.1)
+plot(nb.GL0.1)
+```
+
+-------------
+| nb.GL1.1.5 |
+-------------
+OR 
+-----------
+| nb.GL0.1 |
+-----------
+
+# Common Murre
+This chunk performs generalized additive model selection for common murre:
+```{r GAM CoMu}
+# switch training data
+CoMu <- trans_1 %>% filter(species == "CoMu")
+interspec <- trans_1 %>% filter(species == "GL")
+CoMu$GL <- interspec$Density
+rm(interspec)
+
+# train the models
+nb.CM01 <- gam(Density ~ s(bathy, k=3), family = nb, data=CoMu)
+nb.CM02 <- gam(Density ~ s(topog, k=3), family = nb, data=CoMu)
+nb.CM03 <- gam(Density ~ s(dist, k=3), family = nb, data=CoMu)
+nb.CM04 <- gam(Density ~ s(channel_width, k=3), family = nb, data=CoMu)
+nb.CM05 <- gam(Density ~ s(tcur, k=3), family = nb, data=CoMu)
+nb.CM06 <- gam(Density ~ s(phyto, k=4), family = nb, data=CoMu)
+nb.CM07 <- gam(Density ~ s(temp, k=4), family = nb, data=CoMu)
+nb.CM08 <- gam(Density ~ s(temp_sd, k=4), family = nb, data=CoMu)
+nb.CM09 <- gam(Density ~ s(salt, k=4), family = nb, data=CoMu)
+
+# Examining Model Results
+summary(nb.CM01)
+summary(nb.CM02)
+summary(nb.CM03)
+summary(nb.CM04)
+summary(nb.CM05)
+summary(nb.CM06)
+summary(nb.CM07)
+summary(nb.CM08)
+summary(nb.CM09)
+
+# calculating AIC weights
+vec_AIC <- AIC(nb.CM01, nb.CM02, nb.CM03, nb.CM04, nb.CM05, nb.CM06, nb.CM07, nb.CM08, nb.CM09)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+```
+Based on AIC weights, distance from shore produces the best predictive model.
+
+```{r GAM CoMu: Variable Effects}
+plot(nb.CM01)
+plot(nb.CM02)
+plot(nb.CM03)
+plot(nb.CM04)
+plot(nb.CM05)
+plot(nb.CM06)
+plot(nb.CM07)
+plot(nb.CM08)
+plot(nb.CM09)
+```
+
+#CoMu: Forward Selection 2
+```{r GAM CoMu: Forward Selection 2}
+rm(nb.CM02, nb.CM03, nb.CM04, nb.CM05, nb.CM06, nb.CM07, nb.CM08, nb.CM09)
+
+nb.CM1.1 <- gam(Density ~ s(dist, k=3) + s(bathy, k=3), family = nb, data=CoMu)
+nb.CM1.2 <- gam(Density ~ s(dist, k=3) + s(topog, k=3), family = nb, data=CoMu)
+nb.CM1.3 <- gam(Density ~ s(dist, k=3) + s(tcur, k=3), family = nb, data=CoMu)
+nb.CM1.4 <- gam(Density ~ s(dist, k=3) + s(phyto, k=4), family = nb, data=CoMu)
+nb.CM1.5 <- gam(Density ~ s(dist, k=3) + s(temp, k=4), family = nb, data=CoMu)
+nb.CM1.6 <- gam(Density ~ s(dist, k=3) + s(temp_sd, k=4), family = nb, data=CoMu)
+nb.CM1.7 <- gam(Density ~ s(dist, k=3) + s(salt, k=4), family = nb, data=CoMu)
+
+
+# Examining model results
+summary(nb.CM1.1)
+summary(nb.CM1.2)
+summary(nb.CM1.3)
+summary(nb.CM1.4)
+summary(nb.CM1.5)
+summary(nb.CM1.6)
+summary(nb.CM1.7)
+
+# selecting the best model
+vec_AIC <- AIC(nb.CM01, nb.CM1.1, nb.CM1.2, nb.CM1.3, nb.CM1.4, nb.CM1.5, nb.CM1.6, nb.CM1.7)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining best model
+summary(nb.CM1.1)
+
+rm(nb.CM1.0, nb.CM1.2, nb.CM1.3, nb.CM1.4, nb.CM1.5, nb.CM1.6, nb.CM1.7) # cleanup
+
+plot(nb.CM1.1)
+```
+Based on these results, temperature is the next best predcitor 
+
+#CoMu: Forward Selection 3
+```{r GAM CoMu: Forward Selection 3}
+nb.CM1.1.1 <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(topog, k=3), family = nb, data=CoMu)
+nb.CM1.1.2 <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(tcur, k=3), family = nb, data=CoMu)
+nb.CM1.1.4 <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(bathy, k=3), family = nb, data=CoMu)
+nb.CM1.1.5 <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(temp_sd, k=4), family = nb, data=CoMu)
+nb.CM1.1.6 <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(salt, k=4), family = nb, data=CoMu)
+
+# selecting the best model
+vec_AIC <- AIC(nb.CM1.1, nb.CM1.1.1, nb.CM1.1.2, nb.CM1.1.4, nb.CM1.1.5, nb.CM1.1.6)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(nb.CM1.1.6)
+rm(nb.CM1.1.1, nb.CM1.1.2, nb.CM1.1.3, nb.CM1.1.4, nb.CM1.1.5)
+```
+Salinity is the next best predictor
+
+#CoMu: Forward Selection 4
+```{r GAM CoMu: Forward Selection 4}
+nb.CM1.1.1.1 <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(salt, k=4) + s(topog, k=3), family = nb, data=CoMu)
+nb.CM1.1.1.2 <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(salt, k=4) + s(tcur, k=3), family = nb, data=CoMu)
+nb.CM1.1.1.3 <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(salt, k=4) + s(temp_sd, k=4), family = nb, data=CoMu)
+nb.CM1.1.1.4 <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(salt, k=4) + s(bathy, k=3), family = nb, data=CoMu)
+
+# selecting the best model
+vec_AIC <- AIC(nb.CM1.1.6, nb.CM1.1.1.1, nb.CM1.1.1.2, nb.CM1.1.1.3, nb.CM1.1.1.4)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(nb.CM1.1.1.1)
+summary(nb.CM1.1.1.2)
+summary(nb.CM1.1.1.3)
+summary(nb.CM1.1.1.4)
+
+rm(nb.CM1.1.1.1, nb.CM1.1.1.2, nb.CM1.1.1.3)
+```
+bathymetry is the next most significant variable
+
+#CoMu: Forward Selection 5
+```{r GAM CoMu: Forward Selection 4}
+nb.CM1.1.1.1.1 <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(salt, k=4) + s(bathy, k=3) + s(topog, k=3), family = nb, data=CoMu)
+nb.CM1.1.1.1.2 <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(salt, k=4) + s(bathy, k=3) + s(tcur, k=3), family = nb, data=CoMu)
+nb.CM1.1.1.1.3 <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(salt, k=4) + s(bathy, k=3) + s(temp_sd, k=3), family = nb, data=CoMu)
+
+# selecting the best model
+vec_AIC <- AIC(nb.CM1.1.1.4, nb.CM1.1.1.1.1, nb.CM1.1.1.1.2, nb.CM1.1.1.1.3)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(nb.CM1.1.1.1.1)
+summary(nb.CM1.1.1.1.2)
+summary(nb.CM1.1.1.1.3)
+```
+None of these variables improved the model's performance
+
+# FS 6: Examining if interspecies effects are present
+```{r GAM CoMu: Forward Selection 5}
+nb.CM0.1 <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(salt, k=4) + s(bathy, k=3) + s(GL, k=4), family = nb, data=CoMu)
+
+# selecting the best model
+vec_AIC <- AIC(nb.CM1.1.1.4, nb.CM0.1)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# examining model results
+summary(nb.CM0.1)
+plot(nb.CM0.1)
+```
+
+---------------
+| nb.CM1.1.1.4 |
+---------------
+OR
+-----------
+| nb.CM0.1 |
+-----------
+
+# Predictive surfaces for seabirds
+```{r Predicted Habitat Map}
+## Predicting Across Study Grid Using Environmental Variables ##
+## GLAUCOUS GULL ##
+
+# compile prediction space
+GL_Predicted_Presence <- env_all
+scaled.vars <- scale(GL_Predicted_Presence[,c(6:10,12:15)])
+GL_Predicted_Presence <- GL_Predicted_Presence %>% dplyr::select(c("grid_id", "lat_deg", "long_deg", "Date"))
+GL_Predicted_Presence <- cbind(GL_Predicted_Presence, scaled.vars)
+rm(scaled.vars)
+# make the predictions
+GL_Predicted_Presence$predicted <- predict(nb.GL1.1.5, newdata = GL_Predicted_Presence, type = "response")
+
+GL_Predicted_Presence <- GL_Predicted_Presence %>% group_by(grid_id) %>% summarise(lat_deg = mean(lat_deg), long_deg = mean(long_deg), sd = sd(predicted), predicted = mean(predicted))
+
+GL_Predicted_Presence <- GL_Predicted_Presence %>% mutate(CV = sd / predicted)
+
+GL_Predicted_Presence <- GL_Predicted_Presence %>% filter(!is.na(predicted))
+GL_Predicted_Presence <- GL_Predicted_Presence %>% st_as_sf(coords = c("long_deg", "lat_deg"), crs = 4326)
+
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = GL_Predicted_Presence, aes(fill = predicted), size = 2.75, shape = 22) +
+  scale_fill_viridis(option = "magma", name = "Density") +
+  ggtitle("Glaucous W. Gull Predicted Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal() 
+  theme(legend.position="bottom")
+
+## COMMON MURRE ##
+
+# compile prediction space
+CM_Predicted_Presence <- env_all
+scaled.vars <- scale(CM_Predicted_Presence[,c(6:10,12:15)])
+CM_Predicted_Presence <- CM_Predicted_Presence %>% dplyr::select(c("grid_id", "lat_deg", "long_deg", "Date"))
+CM_Predicted_Presence <- cbind(CM_Predicted_Presence, scaled.vars)
+rm(scaled.vars)
+
+# make the predictions
+CM_Predicted_Presence$predicted <- predict(nb.CM1.1.1.4, newdata = CM_Predicted_Presence, type = "response")
+
+CM_Predicted_Presence <- CM_Predicted_Presence %>% group_by(grid_id) %>% summarise(lat_deg = mean(lat_deg), long_deg = mean(long_deg), sd = sd(predicted), predicted = mean(predicted))
+
+CM_Predicted_Presence <- CM_Predicted_Presence %>% mutate(CV = sd / predicted)
+
+CM_Predicted_Presence <- CM_Predicted_Presence %>% filter(!is.na(predicted))
+CM_Predicted_Presence <- CM_Predicted_Presence %>% st_as_sf(coords = c("long_deg", "lat_deg"), crs = 4326)
+
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = CM_Predicted_Presence, aes(fill = predicted), size = 2.75, shape = 22) +
+  scale_fill_viridis(option = "magma", name = "Density") +
+  ggtitle("Common Murre Predicted Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal()
+
+# COMBINED #
+GL_Predicted_Presence$Species_Code <- "GL"
+CM_Predicted_Presence$Species_Code <- "CM"
+
+SB <- rbind(GL_Predicted_Presence, CM_Predicted_Presence)
+
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = SB, aes(color = predicted), size = 1.5) +
+  scale_color_viridis(option = "magma", name = "Density") +
+  facet_wrap(~Species_Code) +
+  coord_sf() +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+# Guild Habitat Map
+Average the predictions for species in each guild to estimate core habitat for marine mammals and seabirds
+```{r Guild Maps}
+## HARBOR PORPOISE ##
+quantile(HP_Predicted_Presence$predicted, 0.9)
+HP_Predicted_90 <- HP_Predicted_Presence %>% filter(predicted > 0.3592713)
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = HP_Predicted_90, fill = "dodgerblue", shape = 22, size = 2) +
+  scale_color_viridis(name = "Probability") +
+  ggtitle("Harbor Porpoise Predicted Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal()
+
+## HARBOR SEAL ##
+quantile(HS_Predicted_Presence$predicted, 0.9)
+HS_Predicted_90 <- HS_Predicted_Presence %>% filter(predicted > 0.9032442)
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = HS_Predicted_90, fill = "dodgerblue", shape = 22, size = 2) +
+  scale_color_viridis(name = "Probability") +
+  ggtitle("Harbor Seal Predicted Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal()
+
+## GLAUCOUS GULL ##
+quantile(GL_Predicted_Presence$predicted, 0.9, na.rm = TRUE)
+GL_Predicted_90 <- GL_Predicted_Presence %>% filter(predicted > 11.77676)
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = GL_Predicted_90, fill = "dodgerblue", shape = 22, size = 2) +
+  scale_color_viridis(name = "Probability") +
+  ggtitle("Glaucous-Winged Gull Predicted Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal()
+
+## COMMON MURRE ##
+quantile(CM_Predicted_Presence$predicted, 0.9, na.rm = TRUE)
+CM_Predicted_90 <- CM_Predicted_Presence %>% filter(predicted > 17.58207)
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = CM_Predicted_90, fill = "dodgerblue", shape = 22, size = 2) +
+  scale_color_viridis(name = "Probability") +
+  ggtitle("Common Murre Predicted Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal()
+
+
+# COMBINED GUILD MAP #
+HS_HP <- st_join(HP_Predicted_90, HS_Predicted_90) %>% filter(!is.na(predicted.x) & !is.na(predicted.y))
+
+CM_GL <- st_join(CM_Predicted_90, GL_Predicted_90) %>% filter(!is.na(predicted.x) & !is.na(predicted.y))
+
+HS_GL <- st_join(HS_Predicted_90, GL_Predicted_90) %>% filter(!is.na(predicted.x) & !is.na(predicted.y))
+HS_CM <- st_join(HS_Predicted_90, CM_Predicted_90) %>% filter(!is.na(predicted.x) & !is.na(predicted.y))
+HP_GL <- st_join(HP_Predicted_90, GL_Predicted_90) %>% filter(!is.na(predicted.x) & !is.na(predicted.y))
+HP_CM <- st_join(HP_Predicted_90, CM_Predicted_90) %>% filter(!is.na(predicted.x) & !is.na(predicted.y))
+
+HS_HP_GL <- st_join(HS_HP, GL_Predicted_90) %>% filter(!is.na(predicted.x) & !is.na(predicted.y) & !is.na(predicted))
+
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = HP_GL, color = "black", size = 1.75) +
+  scale_color_viridis(name = "Probability") +
+  ggtitle("Porpoise Gull Core Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal()
+
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = HP_CM, color = "black", size = 1.75) +
+  scale_color_viridis(name = "Probability") +
+  ggtitle("Porpoise Murre Core Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal()
+
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = HS_GL, color = "black", size = 1.75) +
+  scale_color_viridis(name = "Probability") +
+  ggtitle("Seal Gull Core Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal()
+
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = HS_HP_GL, color = "black", size = 1.75) +
+  scale_color_viridis(name = "Probability") +
+  ggtitle("Seal Porpoise Gull Core Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal()
+
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = HS_HP, color = "black", size = 2) +
+  scale_color_viridis(name = "Probability") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal()
+
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = HS_GL, color = "black", size = 2) +
+  geom_sf(data = HP_GL, color = "black", size = 2) +
+  geom_sf(data = HP_CM, color = "black", size = 2) +
+  scale_color_viridis(name = "Probability") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal()
+
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = CM_GL, color = "black", size = 2) +
+  scale_color_viridis(name = "Probability") +
+  xlaaab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal()
+
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = HS_HP_GL, color = "red", size = 2.5) +
+  scale_color_viridis(name = "Probability") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal()
+
+ggplot() +
+  geom_sf(data = islands, color = "black") +
+  geom_sf(data = HS_HP, color = "blue4", size = 2.5) +
+  geom_sf(data = HS_GL, color = "blue4", size = 2.5) +
+  geom_sf(data = HP_GL, color = "blue4", size = 2.5) +
+  geom_sf(data = HP_CM, color = "blue4", size = 2.5) +
+  geom_sf(data = CM_GL, color = "blue4", size = 2.5) +
+  geom_sf(data = HS_HP_GL, color = "dodgerblue", size = 2.5) +
+  scale_color_viridis(name = "Probability") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal()
+```
+
+## CROSS VALIDATION METHODS:
+Test the methodology for Monte Carlo cross validation on a single iteration of holdout validation
+
+# Step 1: Begin by creating a training and test set on which to build and apply validation models
+Partition the data into training and test sets:
+```{r CrVal: Data Partitioning, echo=FALSE}
+allrows <- 1:nrow(cruises_ocean_time_all)
+
+set.seed(7)
+train_rows <- sample(allrows, replace = F, size = 0.75*length(allrows))
+test_rows <- allrows[-train_rows]
+
+train <- cruises_ocean_time_all[train_rows,]
+train <- train %>% dplyr::select(-c(ocean_time))
+train$Date <- ymd(train$Date)
+test <- cruises_ocean_time_all[test_rows,]
+test <- test %>% dplyr::select(-c(ocean_time))
+test$Date <- ymd(test$Date)
+
+train <- inner_join(trans_1, train)
+test <- inner_join(trans_1, test)
+
+# Note: How many unique combinations of training / testing data are there in this dataset?
+(factorial(28) / ((28-21) * factorial(21))) # calculate the number of combinations (not permutations)
+# a shit fuck ton is the answer
+```
+
+# Step 1.5: Alternatively, begin by creating a stratified training and test with equal representation from each year:
+Partition the data into training and test sets:
+```{r CrVal: Data Partitioning, echo=FALSE}
+rows_2017 <- 1:6
+rows_2018 <- 7:12
+rows_2019 <- 13:17
+rows_2020 <- 18:24
+rows_2021 <- 25:28
+
+set.seed(7)
+strat.2017 <- sample(rows_2017, replace = F, size = 0.75*length(rows_2017))
+strat.2018 <- sample(rows_2018, replace = F, size = 0.75*length(rows_2018))
+strat.2019 <- sample(rows_2019, replace = F, size = 0.75*length(rows_2019))
+strat.2020 <- sample(rows_2020, replace = F, size = 0.75*length(rows_2020))
+strat.2021 <- sample(rows_2021, replace = F, size = 0.75*length(rows_2021))
+
+
+train_rows <- c(strat.2017, strat.2018, strat.2019, strat.2020, strat.2021)
+test_rows <- allrows[-train_rows]
+
+cruises_ocean_time_all$cruise.gen <- factor(cruises_ocean_time_all$cruise.gen)
+train <- cruises_ocean_time_all[train_rows,]
+train <- train %>% dplyr::select(-c(ocean_time))
+train$Date <- ymd(train$Date)
+test <- cruises_ocean_time_all[test_rows,]
+test <- test %>% dplyr::select(-c(ocean_time))
+test$Date <- ymd(test$Date)
+
+train <- inner_join(trans_1, train)
+test <- inner_join(trans_1, test)
+
+# Note: How many unique combinations of training / testing data are there in this dataset?
+(factorial(28) / ((28-21) * factorial(21))) # calculate the number of combinations (not permutations)
+# a shit fuck ton is the answer
+```
+
+# Step 2: Add predicted values of MBM habitat occupancy 
+This code adds prediction values for each of my study species based on the conditions in each zone throughout the 2021 cruises. 
+```{r 2021 Seabird Predictions}
+GL_train <- train %>% filter(species == "GL")
+GL_test <- test %>% filter(species == "GL")
+nb.GL <- gam(Density ~ s(bathy, k=3) + s(dist, k = 3) + s(temp, k=4), family = nb, data=GL_train)
+GL_test$predicted <- predict(nb.GL, newdata = GL_test, type = "response")
+
+CM_train <- train %>% filter(species == "CoMu")
+CM_test <- test %>% filter(species == "CoMu")
+nb.CM <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(salt, k=4) + s(bathy, k=3), family = nb, data=CM_train)
+CM_test$predicted <- predict(nb.CM, newdata = CM_test, type = "response")
+
+seabird_21 <- rbind(GL_test, CM_test)
+```
+Adding predictions to marine mammals:
+```{r Mammal Predictions}
+HPorp_train <- train %>% filter(species == "HPorp")
+HPorp_test <- test %>% filter(species == "HPorp")
+HP <- glm(PA ~ dist, data= HPorp_train, family = "binomial") 
+HPorp_test$predicted <- predict(HP, newdata = HPorp_test, type = "response")
+
+HSeal_train <- train %>% filter(species == "HSeal")
+HSeal_test <- test %>% filter(species == "HSeal")
+HS <- glm(PA ~ bathy + channel_width + phyto + tcur, data= HSeal_train, family = "binomial")
+HSeal_test$predicted <- predict(HS, newdata = HSeal_test, type = "response")
+```
+
+# Step 3: Assess the accuacy of the model predictions
+This next chunk of code will calculate the correlation coefficient and r2 between observed density and predicted density for seabird models
+```{r Seabirds: Density vs. Probability}
+rsq <- function (x, y) cor(x, y) ^ 2
+
+cor(GL_test$Density, GL_test$predicted)
+rsq(GL_test$Density, GL_test$predicted)
+
+cor(CM_test$Density, CM_test$predicted)
+rsq(CM_test$Density, CM_test$predicted)
+
+# NOTE: The correlation between the predicted and observed data is quite low when considered at this scale. This is potentially because both of these models are based primarily on static environmental conditions and are therefore ill-suited for predicting fine scale variability. The original research question was: Based on the spatial differences in abundance observed along our transect line, can we predict where marine birds and mammals will be GENERALLY more abundant across the wider archipeligo. Thus, we need to compare how good the models are at differentiating abundance between the different transect zones. 
+
+# I will be implementing a paired t-test to compare observations vs. predictions. For more information, read: 
+# http://www.sthda.com/english/wiki/paired-samples-t-test-in-r 
+
+t.test(GL_test$predicted, GL_test$Density, paired = TRUE, alternative = "two.sided")
+t.test(CM_test$predicted, CM_test$Density, paired = TRUE, alternative = "two.sided")
+
+```
+The next chunk of code will calculate the accuracy of my presence / absense logistic regression models - looking at the AUC of the response operating curve. For more information, follow this link: https://www.statology.org/auc-in-r/
+
+```{r MarMam: AUC}
+# calculating AUC
+auc(HSeal_test$PA, HSeal_test$predicted)
+ci.auc(HSeal_test$PA, HSeal_test$predicted)
+
+auc(HPorp_test$PA, HPorp_test$predicted)
+ci.auc(HPorp_test$PA, HPorp_test$predicted)
+```
+
+# Step 4: Put it all together
+This code chunk will run 7-fold validation on the cruise data 
+```{r 7-fold validation}
+allrows <- 1:nrow(cruises_ocean_time_all)
+
+set.seed(7)
+sample.rows <- sample(allrows, replace = F, size = length(allrows))
+
+seabird.val <- data.frame()
+marmam.val <- data.frame()
+
+for (i in 1:7) {
+  # step 1: compile the training and testing data
+  train_rows <- sample.rows[(((i-1)*4)+1):(i*4)]
+  test_rows <- allrows[-train_rows]
+  train <- cruises_ocean_time_all[train_rows,]
+  train <- train %>% dplyr::select(-c(ocean_time))
+  train$Date <- ymd(train$Date)
+  test <- cruises_ocean_time_all[test_rows,]
+  test <- test %>% dplyr::select(-c(ocean_time))
+  test$Date <- ymd(test$Date)
+  train <- inner_join(trans_1, train)
+  test <- inner_join(trans_1, test)
+  print("Finished Step 1")
+  # step 2: add predicted values
+  GL_train <- train %>% filter(species == "GL")
+  GL_test <- test %>% filter(species == "GL")
+  ps.GL <- gam(count ~ s(bathy, k=3) + s(channel_width, k=3) + s(temp, k=4) + s(temp_sd, k=5) + s(salt, k=4) + s(topog, k=3), offset = log(effort), family = poisson(link = "log"), data=GL_train)
+  #nb.GL <- gam(Density ~ s(bathy, k=3) + s(dist, k = 3) + s(temp, k=4), family = nb, data=GL_train)
+  GL_test$predicted <- predict(ps.GL, newdata = GL_test, type = "response")
+  #GL_test$predicted <- predict(nb.GL, newdata = GL_test, type = "response")
+  
+  CM_train <- train %>% filter(species == "CoMu")
+  CM_test <- test %>% filter(species == "CoMu")
+  ps.CM <- gam(count ~ s(dist, k=3) + s(phyto, k=4) + s(bathy, k=3) + s(temp_sd, k=5) + s(tcur, k=3), offset = log(effort), family = poisson(link = "log"), data=CoMu)
+  #nb.CM <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(salt, k=4) + s(bathy, k=3), family = nb, data=CM_train)
+  CM_test$predicted <- predict(ps.CM, newdata = CM_test, type = "response")
+  #CM_test$predicted <- predict(nb.CM, newdata = CM_test, type = "response")
+  
+  HPorp_train <- train %>% filter(species == "HPorp")
+  HPorp_test <- test %>% filter(species == "HPorp")
+  HP <- glm(PA ~ dist, data= HPorp_train, family = "binomial") 
+  HPorp_test$predicted <- predict(HP, newdata = HPorp_test, type = "response")
+  
+  HSeal_train <- train %>% filter(species == "HSeal")
+  HSeal_test <- test %>% filter(species == "HSeal")
+  HS <- glm(PA ~ bathy + channel_width + phyto + tcur, data= HSeal_train, family = "binomial")
+  HSeal_test$predicted <- predict(HS, newdata = HSeal_test, type = "response")
+  print("Finished Step 2")
+  # step 3: assess the accuacy of the models
+  # abundance models
+  GL.t <- t.test(GL_test$predicted, GL_test$Density, paired = TRUE, alternative = "two.sided")
+  CM.t <- t.test(CM_test$predicted, CM_test$Density, paired = TRUE, alternative = "two.sided")
+
+  data <- data.frame(
+    Trial = c(i,i),
+    cor.coef = c(cor(GL_test$Density, GL_test$predicted), cor(CM_test$Density, CM_test$predicted)),
+    r.squared = c(rsq(GL_test$Density, GL_test$predicted), rsq(CM_test$Density, CM_test$predicted)),
+    p.value = c(GL.t$p.value, CM.t$p.value),
+    species = c("GL", "CoMu")
+  )
+  seabird.val <- rbind(seabird.val, data)
+  rm(GL.t, CM.t, data)
+  print("Finished Step 3a")
+  # presence absence models
+  HS.t <- ci.auc(HSeal_test$PA, HSeal_test$predicted)
+  HP.t <- ci.auc(HPorp_test$PA, HPorp_test$predicted)
+  
+  data <- data.frame(
+    AUC = c(HS.t[2], HP.t[2]),
+    L.CI = c(HS.t[1], HP.t[1]),
+    H.CI = c(HS.t[3], HP.t[3]),
+    species = c("HSeal", "HPorp")
+  )
+  
+ marmam.val <- rbind(marmam.val, data)
+ rm(HS.t, HP.t, data)
+ print("Finished Step 3b")
+ 
+ print(i)
+}
+```
+
+```{r stratified Monte Carlo Validation}
+rows_2017 <- 1:6
+rows_2018 <- 7:12
+rows_2019 <- 13:17
+rows_2020 <- 18:24
+rows_2021 <- 25:28
+
+seabird.val <- data.frame()
+marmam.val <- data.frame()
+
+for (i in 1:50) {
+  # step 1: compile the training and testing data
+  seed <- round(runif(1,1,100),0)
+  set.seed(seed)
+  strat.2017 <- sample(rows_2017, replace = F, size = 0.75*length(rows_2017))
+  strat.2018 <- sample(rows_2018, replace = F, size = 0.75*length(rows_2018))
+  strat.2019 <- sample(rows_2019, replace = F, size = 0.75*length(rows_2019))
+  strat.2020 <- sample(rows_2020, replace = F, size = 0.75*length(rows_2020))
+  strat.2021 <- sample(rows_2021, replace = F, size = 0.75*length(rows_2021))
+  
+  train_rows <- c(strat.2017, strat.2018, strat.2019, strat.2020, strat.2021)
+  rm(strat.2017, strat.2018, strat.2019, strat.2020, strat.2021)
+  test_rows <- allrows[-train_rows]
+  cruises_ocean_time_all$cruise.gen <- factor(cruises_ocean_time_all$cruise.gen)
+  train <- cruises_ocean_time_all[train_rows,]
+  train <- train %>% dplyr::select(-c(ocean_time))
+  train$Date <- ymd(train$Date)
+  test <- cruises_ocean_time_all[test_rows,]
+  test <- test %>% dplyr::select(-c(ocean_time))
+  test$Date <- ymd(test$Date)
+  train <- inner_join(trans_1, train)
+  test <- inner_join(trans_1, test)
+  print("Finished Step 1")
+  # step 2: add predicted values NOTE: SELECT THE DESIRED MODEL ON LINES 3327:3330 AND 3335:3338
+  GL_train <- train %>% filter(species == "GL")
+  GL_test <- test %>% filter(species == "GL")
+  #ps.GL <- gam(count ~ s(bathy, k=3) + s(channel_width, k=3) + s(temp, k=4) + s(temp_sd, k=5) + s(salt, k=4) + s(topog, k=3), offset = log(effort), family = poisson(link = "log"), data=GL_train)
+  nb.GL <- gam(Density ~ s(bathy, k=3) + s(dist, k = 3) + s(temp, k=4), family = nb, data=GL_train)
+  #GL_test$predicted <- predict(ps.GL, newdata = GL_test, type = "response")
+  GL_test$predicted <- predict(nb.GL, newdata = GL_test, type = "response")
+  GL_test <- GL_test %>% mutate(null = mean(Density), r.residual = (Density - predicted)^2, n.residual = (Density - null)^2)
+  
+  CM_train <- train %>% filter(species == "CoMu")
+  CM_test <- test %>% filter(species == "CoMu")
+  #ps.CM <- gam(count ~ s(dist, k=3) + s(phyto, k=4) + s(bathy, k=3) + s(temp_sd, k=5) + s(tcur, k=3), offset = log(effort), family = poisson(link = "log"), data=CoMu)
+  nb.CM <- gam(Density ~ s(dist, k=3) + s(temp, k=4) + s(salt, k=4) + s(bathy, k=3), family = nb, data=CM_train)
+  #CM_test$predicted <- predict(ps.CM, newdata = CM_test, type = "response")
+  CM_test$predicted <- predict(nb.CM, newdata = CM_test, type = "response")
+  CM_test <- CM_test %>% mutate(null = mean(Density), r.residual = (Density - predicted)^2, n.residual = (Density - null)^2)
+  
+  HPorp_train <- train %>% filter(species == "HPorp")
+  HPorp_test <- test %>% filter(species == "HPorp")
+  HP <- glm(PA ~ dist, data= HPorp_train, family = "binomial") 
+  HPorp_test$predicted <- predict(HP, newdata = HPorp_test, type = "response")
+  
+  HSeal_train <- train %>% filter(species == "HSeal")
+  HSeal_test <- test %>% filter(species == "HSeal")
+  HS <- glm(PA ~ bathy + channel_width + phyto + tcur, data= HSeal_train, family = "binomial")
+  HSeal_test$predicted <- predict(HS, newdata = HSeal_test, type = "response")
+  print("Finished Step 2")
+  # step 3: assess the accuracy of the models
+  # abundance models
+  GL.t <- t.test(GL_test$predicted, GL_test$Density, paired = TRUE, alternative = "two.sided")
+  CM.t <- t.test(CM_test$predicted, CM_test$Density, paired = TRUE, alternative = "two.sided")
+  GL.r <- (sum(GL_test$n.residual) - sum(GL_test$r.residual))/sum(GL_test$n.residual)
+  CM.r <- (sum(CM_test$n.residual) - sum(CM_test$r.residual))/sum(CM_test$n.residual)
+
+
+  data <- data.frame(
+    Trial = c(i,i),
+    cor.coef = c(cor(GL_test$Density, GL_test$predicted), cor(CM_test$Density, CM_test$predicted)),
+    r.squared = c(rsq(GL_test$Density, GL_test$predicted), rsq(CM_test$Density, CM_test$predicted)),
+    p.value = c(GL.t$p.value, CM.t$p.value),
+    dev.expl = c(GL.r, CM.r), 
+    species = c("GL", "CoMu")
+  )
+  seabird.val <- rbind(seabird.val, data)
+  rm(GL.t, CM.t, data)
+  print("Finished Step 3a")
+  # presence absence models
+  HS.t <- ci.auc(HSeal_test$PA, HSeal_test$predicted)
+  HP.t <- ci.auc(HPorp_test$PA, HPorp_test$predicted)
+  
+  data <- data.frame(
+    AUC = c(HS.t[2], HP.t[2]),
+    L.CI = c(HS.t[1], HP.t[1]),
+    H.CI = c(HS.t[3], HP.t[3]),
+    species = c("HSeal", "HPorp")
+  )
+  
+ marmam.val <- rbind(marmam.val, data)
+ rm(HS.t, HP.t, data)
+ print("Finished Step 3b")
+ 
+ print(i)
+}
+```
+
+# Prediction vs. Observation plots
+```{r Prediction vs. Observation}
+## MARINE MAMMALS ##
+## Harbor Porpoise
+# Observed
+ggplot(data = filter(mammals_21, Species_code == "HPorp")) +
+  geom_boxplot(aes(y = Observed, color = Zone)) +
+  scale_x_continuous(breaks = c(), labels = c()) +
+  scale_y_continuous(limits = c(0,0.5)) +
+  facet_wrap(~Species_code) +
+  ylab("Observed Probability of Presence") +
+  theme_light()
+# Predicted
+ggplot(data = filter(mammals_21, Species_code == "HPorp")) +
+  geom_boxplot(aes(y = predicted, color = Zone)) +
+  scale_x_continuous(breaks = c(), labels = c()) +
+  scale_y_continuous(limits = c(0,0.5)) +
+  facet_wrap(~Species_code) +
+  ylab("Predicted Probability of Presence") +
+  theme_rk()
+  
+## Harbor Seal
+# Observed
+ggplot(data = filter(mammals_21, Species_code == "HSeal")) +
+  geom_boxplot(aes(y = Observed, color = Zone)) +
+  scale_x_continuous(breaks = c(), labels = c()) +
+  scale_y_continuous(limits = c(0,0.9)) +
+  facet_wrap(~Species_code) +
+  ylab("Observed Probability of Presence") +
+  theme_light()
+# Predicted
+ggplot(data = filter(mammals_21, Species_code == "HSeal")) +
+  geom_boxplot(aes(y = predicted, color = Zone)) +
+  scale_x_continuous(breaks = c(), labels = c()) +
+  scale_y_continuous(limits = c(0,0.9)) +
+  facet_wrap(~Species_code) +
+  ylab("Predicted Probability of Presence") +
+  theme_dark()
+
+## SEABIRDS ##
+## Glaucous-winged gull
+# Observed
+ggplot(data = filter(seabird_21, Species_code == "GL")) +
+  geom_boxplot(aes(y = Density, color = Zone)) +
+  scale_x_continuous(breaks = c(), labels = c()) +
+  scale_y_continuous(limits = c(0,26)) +
+  facet_wrap(~Species_code) +
+  ylab("Observed Density (indv. km-2)") +
+  theme_light()
+# Predicted
+ggplot(data = filter(seabird_21, Species_code == "GL")) +
+  geom_boxplot(aes(y = predicted, color = Zone)) +
+  scale_x_continuous(breaks = c(), labels = c()) +
+  scale_y_continuous(limits = c(0,26)) +
+  facet_wrap(~Species_code) +
+  ylab("Predicted Density") +
+  theme_dark()
+  
+## Common Murre
+# Observed
+ggplot(data = filter(seabird_21, Species_code == "CoMu")) +
+  geom_boxplot(aes(y = Density, color = Zone)) +
+  scale_x_continuous(breaks = c(), labels = c()) +
+  scale_y_continuous(limits = c(0,50)) +
+  facet_wrap(~Species_code) +
+  ylab("Observed Density (indv. km-2)") +
+  theme_light()
+# Predicted
+ggplot(data = filter(seabird_21, Species_code == "CoMu")) +
+  geom_boxplot(aes(y = predicted, color = Zone)) +
+  scale_x_continuous(breaks = c(), labels = c()) +
+  scale_y_continuous(limits = c(0,50)) +
+  facet_wrap(~Species_code) +
+  ylab("Predicted Density") +
+  theme_dark()
+
+## MAMMALS ##
+# Observed
+ggplot(data = filter(mammals)) +
+  geom_boxplot(aes(y = observed, color = Zone)) +
+  scale_x_continuous(breaks = c(), labels = c()) +
+  scale_y_continuous(limits = c(0,0.6)) +
+  ylab("Observed Probability of Presence") +
+  theme_light()
+# Predicted
+ggplot(data = filter(mammals)) +
+  geom_boxplot(aes(y = predicted, color = Zone)) +
+  scale_x_continuous(breaks = c(), labels = c()) +
+  scale_y_continuous(limits = c(0,0.6)) +
+  ylab("Predicted Probability of Presence") +
+  theme_dark()
+
+## SEABIRDS ##
+# Observed
+ggplot(data = filter(birds)) +
+  geom_boxplot(aes(y = observed, color = Zone)) +
+  scale_x_continuous(breaks = c(), labels = c()) +
+  scale_y_continuous(limits = c(0,35)) +
+  ylab("Observed Density") +
+  theme_light()
+# Predicted
+ggplot(data = filter(birds)) +
+  geom_boxplot(aes(y = predicted, color = Zone)) +
+  scale_x_continuous(breaks = c(), labels = c()) +
+  scale_y_continuous(limits = c(0,35)) +
+  ylab("Predicted Density") +
+  theme_dark()
+```
+
+## MODEL VALIDATION
+For most model validation tasks, 
+
+# MBM Data
+Use a paired observation t-test to see if the difference between prediction and observation is significant in each instance:
+
+```{r MBM Data Validation}
+## SEABIRDS
+# because the n < 30, we need to examine to see if the differences are normally distributed
+d <- seabird_21 %>% mutate(d = Density - predicted,lnDensity = (log(Density) + 1), lnPredicted = (log(predicted) + 1)) 
+d_GL <- filter(d, Species_code == "GL")
+shapiro.test(d_GL$d)
+
+d_CoMu <- filter(d, Species_code == "CoMu")
+shapiro.test(d_CoMu$d)
+
+t.test(d_GL$predicted, d_GL$Density, paired = TRUE, alternative = "two.sided")
+
+t.test(d_CoMu$predicted, d_CoMu$Density, paired = TRUE, alternative = "two.sided")
+
+rm(d_GL, d_CoMu)
+
+## MARINE MAMMALS
+# because the n < 30, we need to examine to see if the differences are normally distributed
+d <- mammals_21 %>% mutate(d = Observed - predicted) 
+d_HPorp <- filter(d, Species_code == "HPorp")
+shapiro.test(d_HPorp$d)
+
+d_HSeal <- filter(d, Species_code == "HSeal")
+shapiro.test(d_HSeal$d)
+
+t.test(d_HPorp$predicted, d_HPorp$Observed, paired = TRUE, alternative = "two.sided")
+
+t.test(d_HSeal$predicted, d_HSeal$Observed, paired = TRUE, alternative = "two.sided")
+
+rm(d, d_HPorp, d_HSeal)
+```
+
+# LiveOcean Data
+```{r LiveOcean Data Validation}
+# input all the measured salinity and temperature data from CTD casts 
+LiveOcean_validation <- data.frame(
+  Date = c("2017-10-03", "2017-10-03", "2017-10-10", "2017-10-10", "2017-10-19", "2017-10-24", "2017-10-24", "2017-10-31", "2017-10-31", "2017-11-07", "2017-11-07", "2017-11-16", "2017-11-16", "2018-10-02", "2018-10-02", "2018-10-11", "2018-10-11", "2018-10-11", "2018-10-16", "2018-10-16", "2018-10-16", "2018-10-23", "2018-10-23", "2018-10-23", "2018-10-30", "2018-10-30", "2018-10-30", "2018-11-06", "2018-11-06", "2018-11-06","2019-10-12", "2019-10-12", "2019-10-19", "2019-10-19", "2019-10-23", "2019-10-23", "2019-10-30", "2019-10-30", "2019-11-05", "2019-11-05","2020-10-08", "2020-10-08", "2020-10-08", "2020-10-15", "2020-10-15", "2020-10-15", "2020-10-20", "2020-10-20", "2020-10-20", "2020-10-26", "2020-10-26", "2020-10-26", "2020-11-02", "2020-11-02", "2020-11-02", "2020-11-10", "2020-11-10", "2020-11-10", "2021-10-07", "2021-10-07", "2021-10-12", "2021-10-12", "2021-10-19", "2021-10-19", "2021-10-26", "2021-10-26", "2021-10-26", "2021-11-02", "2021-11-02", "2021-11-11", "2021-11-11"),
+  Station = c("N", "S", "N", "S", "N", "N", "S", "N", "S", "N", "S", "N", "S", "N", "S", "N", "N", "S", "N", "N", "S", "N", "N", "S", "N", "N", "S", "N", "N", "S", "N", "S", "N", "S", "N", "S", "N", "N", "N", "N", "N", "N", "N", "N", "N", "S", "N", "N", "S", "N", "N", "S", "N", "N", "S", "N", "N", "S", "N", "N", "N", "S", "N", "S", "N", "N", "S", "N", "S", "N", "S"),
+  ObsTemp = c(11.1744,11.0054,10.7027,10.1144,10.0385,9.8823,9.995,9.9699,9.9854,9.3791,9.0527,9.11,9.0302,10.9532,10.9468,10.5011,10.6542,10.1065,11.087,11.0187,10.5294,10.39,10.3256,10.4205,9.9189,10.0585,10.025,9.9449,10.0165,9.9937,10.6902,10.4618,10.0837,9.9213,10.0263,10.2864,10.0044,9.8365,9.938,9.8422,11.5242,11.1247,11.5916,10.2834,10.2534,10.3672,10.2935,10.2982,10.0267,9.7976,9.8429,9.7983,9.8346,9.8355,9.7053,9.2335,9.5171,9.1307,10.309,10.6499,10.4456,10.1292,10.1141,10.0473,9.8923,9.8959,9.8819,9.8955,9.8722,9.667,9.6359),
+  ObsSalt = c(29.0343,30.2634,29.7609,31.1907,30.799,31.1091,31.2633,28.9391,30.2145,30.5538,31.2972,30.9555,31.1721,30.1833,30.677,30.0539,30.246,31.2808,28.8436,29.4449,30.9646,30.2389,30.4773,30.6032,31.1851,30.9125,31.2325,30.867,30.9095,31.158,29.6213,30.6697,30.9051,31.1349,31.4226,30.8845,30.031,30.1729,29.3683,30.2707,28.3206,29.1353,28.3167,30.4835,30.7631,30.7125,29.5337,30.1982,31.0804,29.9763,30.3453,30.365,29.8275,30.0771,30.731,28.4766,28.2706,29.89,30.0563,30.2651,29.2604,31.1413,30.8022,30.7752,30.9859,30.7487,31.2495,29.0327,29.8177,30.4858,30.4644)
+)
+
+model_pt <- data.frame(
+  Station = c("N", "N", "N", "N", "S", "S", "S", "S"),
+  lat.x = c(48.5825895797052,48.5825895797052,48.5870894726895,48.5870894726895, 48.4205934322702, 48.4205934322702,48.4160935392859,48.4250933252545),
+  lon.x = c(-123.038688775285,-123.045421593992,-123.038688775285,-123.045421593992,-122.944429313385,-122.937696494678,-122.944429313385,-122.944429313385)
+)
+
+# combine LiveOcean data from all years
+temp_test <- rbind(temp_2017, temp_2018, temp_2019, temp_2020, temp_2021)
+salt_test <- rbind(sal_2017, sal_2018, sal_2019, sal_2020, sal_2021)
+
+# convert coordinates to characters for joining
+temp_test$lat.x <- as.character(temp_test$lat.x)
+temp_test$lon.x <- as.character(temp_test$lon.x)
+
+salt_test$lat.x <- as.character(salt_test$lat.x)
+salt_test$lon.x <- as.character(salt_test$lon.x)
+
+model_pt$lat.x <- as.character(model_pt$lat.x)
+model_pt$lon.x <- as.character(model_pt$lon.x)
+
+# identify 4 closest model points to each station
+temp_test <- inner_join(temp_test, model_pt)
+salt_test <- inner_join(salt_test, model_pt)
+
+# convert ocean_time to dates 
+temp_test <- temp_test %>% mutate(Date = as.Date(ocean_time, origin = "2016-12-31"))
+salt_test <- salt_test %>% mutate(Date = as.Date(ocean_time, origin= "2016-12-31"))
+
+# average the modeled values for the 4 closest points to each station
+temp_test <- temp_test %>% group_by(Date, Station) %>% summarise(ModTemp = mean(temp))
+salt_test <- salt_test %>% group_by(Date, Station) %>% summarise(ModSalt = mean(salt))
+
+# convert Date values to character for join
+temp_test$Date <- as.character(temp_test$Date)
+salt_test$Date <- as.character(salt_test$Date)
+
+# join LiveOcean model data with measured CTD data
+LiveOcean_validation <- inner_join(LiveOcean_validation, temp_test)
+LiveOcean_validation <- inner_join(LiveOcean_validation, salt_test)
+
+# run the paired t-test
+# TEMPERATURE #
+t.test(LiveOcean_validation$ObsTemp, LiveOcean_validation$ModTemp, paired = TRUE, alternative = "two.sided")
+# SALINITY #
+t.test(LiveOcean_validation$ObsSalt, LiveOcean_validation$ModSalt, paired = TRUE, alternative = "two.sided")
+
+```
+
+## PAM Clustering
+Lets try using the k-medoid method in place of k-means method to see how much outliers influence the deliniation of environmental clusters
+
+```{r PAM cluster}
+# get variables for clustering
+env_cluster <-  env_all %>% dplyr::select(grid_id, lat_deg, long_deg, bathy, topog, dist, channel_width, tcur, phyto, temp, temp_sd, salt)
+
+env_cluster <- env_cluster %>% group_by(grid_id) %>% summarise(
+  lat_deg = mean(lat_deg),
+  long_deg = mean(long_deg),
+  bathy = mean(bathy),
+  topog = mean(topog),
+  dist = mean(dist),
+  channel_width = mean(channel_width),
+  tcur = mean(tcur),
+  phyto = mean(phyto),
+  temp = mean(temp),
+  temp_sd = mean(temp_sd),
+  salt = mean(salt)
+)
+
+env_cluster <- env_cluster %>% filter(!is.na(temp_sd))
+clust_vars <- env_cluster %>% dplyr::select(-c(grid_id))
+
+# standardize the variables to a mean of 0 and standard deviation of 1
+clust_vars_standardized <- as_tibble(scale(clust_vars))  
+
+# run the clustering
+pam.res <- pam(clust_vars_standardized, k=15, metric = "euclidean", stand = FALSE)
+env_cluster$cluster <- pam.res$cluster
+env_cluster$cluster <- factor(env_cluster$cluster)
+
+# now let's look at the results
+
+cluster_sf <- env_cluster %>% st_as_sf(coords = c("long_deg", "lat_deg"), crs = 4326)
+
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = cluster_sf, aes(fill = cluster), size = 3, shape = 22) +
+  geom_sf(data= transect) +
+  coord_sf() +
+  xlab("Longitude") +
+  ylab("Latitude") +
+  theme_minimal()
+
+fviz_nbclust(clust_vars_standardized, method = "silhouette", FUNcluster =  pam)
+fviz_nbclust(clust_vars_standardized, method = "wss", FUNcluster =  pam)
+fviz_nbclust(clust_vars_standardized, method = "gap_stat", FUNcluster =  pam)
+
+# According to Milligan and Cooper (1985), CH index, Duda index, Cindex, Gamma, and Beale tests are the indicies which performed best in simulations
+
+NbClust(data = clust_vars_standardized, distance = "euclidean", method = "kmeans", index = "ch")
+NbClust(data = clust_vars_standardized, distance = "euclidean", method = "kmeans", index = "duda")
+NbClust(data = clust_vars_standardized, distance = "euclidean", method = "kmeans", index = "cindex")
+NbClust(data = clust_vars_standardized, distance = "euclidean", method = "kmeans", index = "beale")
+
+```
+
+## CALCULATING MODEL EXTRAPOLATION
+The package "dsmextra" can be used to calculate model extrapolation using the methods described by Mesgaran et al.,(2014).
+Read more about the package here:
+https://densitymodelling.github.io/dsmextra/articles/dsmextra.html
+
+```{r dsmextra data}
+# compile function imputs
+aftt_crs <- sp::CRS("+proj=utm +zone=10 +datum=NAD83 +units=m +no_defs+ towgs84=0,0,0")
+covariates.sja <- c("bathy", "dist", "channel_width", "tcur", "temp", "salt")
+
+# add spatial data to training inputs
+transect_bounds <- read_csv("~/Desktop/PEF/SJA_StudyArea/transect_bounds.csv")
+transect_midpoints <- data.frame(
+  Zone = factor(c(1,2,3,4,5,6)),
+  y = c(48.56946, 48.55147, 48.52447, 48.48849, 48.45250, 48.42551),
+  x = c(-123.0209, -122.9802, -122.9532, -122.9532, -122.9532, -122.9397)
+)
+
+
+sample <- left_join(trans_1, transect_midpoints, by = c("Zone"))
+sample <- sample %>% filter(Species_code == GL)
+
+# create prediction grid object
+predgrid <- env_all 
+predgrid <- predgrid %>% group_by(grid_id) %>% summarise(
+  x = mean(long_deg),
+  y = mean(lat_deg),
+  bathy = mean(bathy),
+  topog = mean(topog),
+  dist = mean(dist),
+  channel_width = mean(channel_width),
+  tcur = mean(tcur),
+  phyto = mean(phyto),
+  temp = mean(temp),
+  temp_sd = mean(temp_sd, na.rm = TRUE),
+  salt = mean(salt)
+)
+
+# manually compare predgrid and sample
+predgrid %>%
+  dplyr::filter(!dplyr::between(bathy, min(sample$bathy), max(sample$bathy)) |
+                  !dplyr::between(dist, min(sample$dist), max(sample$dist)) |
+                  !dplyr::between(channel_width, min(sample$channel_width), max(sample$channel_width)) |
+                  !dplyr::between(tcur, min(sample$tcur), max(sample$tcur)) |
+                  !dplyr::between(temp, min(sample$temp), max(sample$temp)) |
+                  !dplyr::between(salt, min(sample$salt), max(sample$salt))) %>%
+  nrow()
+```
+
+now run the analysis
+```{r dsmextra analysis}
+# calculate extrapolation
+sja.extrapolation <- compute_extrapolation(samples = sample,
+                                   covariate.names = covariates.sja,
+                                   prediction.grid = predgrid,
+                                   coordinate.system = aftt_crs,
+                                   resolution = c(1/74, 1/111))
+
+summary(sja.extrapolation)
+
+# visualize results
+r_df <- as.data.frame(sja.extrapolation$rasters$ExDet$all, xy = TRUE)
+
+ggplot(data = r_df) +
+  geom_raster(aes(x = x, y = y, fill = ExDet)) +
+  scale_fill_gradient2() +
+  coord_quickmap() +
+  theme_classic()
+```
+
+```{r mask for model extrapolation}
+ex_mask <- r_df
+# remove areas with small Mahalanobis metic values
+ex_mask[ex_mask >-1 & ex_mask < 1] <- 0
+ex_mask <- ex_mask %>% filter(ExDet != 0)
+# apply the mask to prediction spaces
+
+# GL
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = GL_Predicted_Presence, aes(fill = predicted), size = 2.75, shape = 22) +
+  geom_tile(data = ex_mask, aes(x = x, y = y), fill = "white", alpha = 0.4) +
+  scale_fill_viridis(option = "magma", name = "Density") +
+  ggtitle("Glaucous W. Gull Predicted Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal() 
+
+# CoMu
+ggplot() +
+  geom_sf(data = islands) +
+  geom_sf(data = CM_Predicted_Presence, aes(fill = predicted), size = 2.75, shape = 22) +
+  geom_tile(data = ex_mask, aes(x = x, y = y), fill = "white", alpha = 0.4) +
+  scale_fill_viridis(option = "magma", name = "Density") +
+  ggtitle("Common Murre Predicted Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal()
+```
+
