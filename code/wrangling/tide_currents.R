@@ -1,9 +1,19 @@
 # DOWNLOADING TIDAL DATA 
 
 
+# setup -------------------------------------------------------------------
+
+library(tidyverse)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(rgeos)
+library(ggspatial)
+library(sf)
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
 # Station info -------------------------------------------------------------------
 
-## EXTRACTING TIDAL CURRENT DATA
+## EXTRACTING TIDE HIGHT DATA
 
 # Here is a list of the tide height and current stations within my study area and their locations:
   
@@ -29,6 +39,88 @@ ggplot() +
 
 
 # extract raw data --------------------------------------------------------
+
+# 2017
+delta_2017 <-
+  # read tide height data from november
+  read_csv("data/Tide_Height/2017/2017_9449880_novacdc28a1638b.csv") %>% 
+  # add data from october
+  rbind(
+    read_csv("data/Tide_Height/2017/2017_9449880_octacdc6c288d25.csv")) %>%
+  # duplicate Date Time column and format correctly
+  mutate(
+    dup = `Date Time`) %>% 
+  separate(dup, into = c("Date", "Time"), sep = "([ ])") %>% 
+  mutate(
+    Date = lubridate::ymd(Date))
+
+# 2018
+delta_2018 <-
+  # read tide height predictions from november
+  read_csv("data/Tide_Height/2018/2018_9449880_octacdc74ea0e9.csv") %>% 
+  # add predictions from october
+  rbind(
+    read_csv("data/Tide_Height/2018/2018_9449880_novacdc5b6a46ec.csv")) %>% 
+  # duplicate and format date 
+  mutate(
+    dup = `Date Time`) %>% 
+    separate(dup, into = c("Date", "Time"), sep = "([ ])") %>% 
+    mutate(
+      Date = lubridate::ymd(Date))
+
+# 2019
+delta_2019 <-
+  # read tide height predictions from november
+  read_csv("data/Tide_Height/2019/2019_9449880_octacdca1cd424.csv") %>% 
+  # add predictions from october
+  rbind(
+    read_csv("data/Tide_Height/2019/2019_9449880_novacdc5698ead8.csv")) %>% 
+  # duplicate and format date 
+  mutate(
+    dup = `Date Time`) %>% 
+  separate(dup, into = c("Date", "Time"), sep = "([ ])") %>% 
+  mutate(
+    Date = lubridate::ymd(Date))
+
+# 2020
+delta_2020 <-
+  # read tide height predictions from november
+  read_csv("data/Tide_Height/2020/2020_9449880_octacdcebe78ce.csv") %>% 
+  # add predictions from october
+  rbind(
+    read_csv("data/Tide_Height/2020/2020_9449880_novacdc1a32ace5.csv")) %>% 
+  # duplicate and format date 
+  mutate(
+    dup = `Date Time`) %>% 
+  separate(dup, into = c("Date", "Time"), sep = "([ ])") %>% 
+  mutate(
+    Date = lubridate::ymd(Date))
+
+# 2021
+delta_2021 <-
+  # read tide height predictions from november
+  read_csv("data/Tide_Height/2021/2021_9449880_octc51f32ede5b0.csv") %>% 
+  # add predictions from october
+  rbind(
+    read_csv("data/Tide_Height/2021/2021_9449880_novc51f77960932.csv")) %>% 
+  # duplicate and format date 
+  mutate(
+    dup = `Date Time`) %>% 
+  separate(dup, into = c("Date", "Time"), sep = "([ ])") %>% 
+  mutate(
+    Date = lubridate::ymd(Date))
+
+
+delta.tide.height <- rbind(delta_2017, delta_2018, delta_2019, delta_2020, delta_2021)
+rm(delta_2017, delta_2018, delta_2019, delta_2020, delta_2021)
+
+# find lowest low and highest high for each day
+delta.tide.height <- 
+  delta.tide.height %>%
+  group_by(Date) %>% 
+  summarize(HH = max(Prediction),
+            LL = min(Prediction)) %>% 
+  mutate(dth = (HH - LL))
 
 
 
