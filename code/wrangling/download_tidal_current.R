@@ -45,7 +45,7 @@ for(i in 1:length(stations)) {
 for(i in 1:length(stations)) {
   begin_date <- 20191121
   end_date <- 20191210
-  assign(station, i)
+  station <- stations[i]
   urltotal <- paste(url1,begin_date,url2,end_date,url3,station,url4,url6,url7,url8,url9,sep ="")
   filename <- paste("2019", stations[i], "nov-dec", sep = "_")
   tmp <- tempfile(pattern = filename, tmpdir = dir, fileext = ".csv")
@@ -53,13 +53,13 @@ for(i in 1:length(stations)) {
 }
 
 ## 2020
-dir <- "data/Tides/2020"
+dir <- "data/raw/Tides/2020"
 
 # 2020 October-November
 for(i in 1:length(stations)) {
   begin_date <- 20201001
   end_date <- 20201101
-  assign(station, i)
+  station <- stations[i]
   urltotal <- paste(url1,begin_date,url2,end_date,url3,station,url4,url6,url7,url8,url9,sep ="")
   filename <- paste("2020", stations[i], "oct-nov", sep = "_")
   tmp <- tempfile(pattern = filename, tmpdir = dir, fileext = ".csv")
@@ -70,7 +70,7 @@ for(i in 1:length(stations)) {
 for(i in 1:length(stations)) {
   begin_date <- 20201101
   end_date <- 20201201
-  assign(station, i)
+  station <- stations[i]
   urltotal <- paste(url1,begin_date,url2,end_date,url3,station,url4,url6,url7,url8,url9,sep ="")
   filename <- paste("2020", stations[i], "nov-dec", sep = "_")
   tmp <- tempfile(pattern = filename, tmpdir = dir, fileext = ".csv")
@@ -78,13 +78,13 @@ for(i in 1:length(stations)) {
 }
 
 ## 2021
-dir <- "data/Tides/2021"
+dir <- "data/raw/Tides/2021"
 
 # 2021 October-November
 for(i in 1:length(stations)) {
   begin_date <- 20211001
   end_date <- 20211101
-  assign(station, i)
+  station <- stations[i]
   urltotal <- paste(url1,begin_date,url2,end_date,url3,station,url4,url6,url7,url8,url9,sep ="")
   filename <- paste("2021", stations[i], "oct-nov", sep = "_")
   tmp <- tempfile(pattern = filename, tmpdir = dir, fileext = ".csv")
@@ -95,7 +95,7 @@ for(i in 1:length(stations)) {
 for(i in 1:length(stations)) {
   begin_date <- 20211101
   end_date <- 20211201
-  assign(station, i)
+  station <- stations[i]
   urltotal <- paste(url1,begin_date,url2,end_date,url3,station,url4,url6,url7,url8,url9,sep ="")
   filename <- paste("2021", stations[i], "nov-dec", sep = "_")
   tmp <- tempfile(pattern = filename, tmpdir = dir, fileext = ".csv")
