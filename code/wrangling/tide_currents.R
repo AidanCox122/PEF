@@ -46,123 +46,119 @@ current_amplitudes_2019 <- data.frame()
 for(i in 1:length(fList)) {
   currents <- 
     read_csv(fList[i]) %>%
-    # split DateTime into untidy but useful subdivisions
-    mutate(
-    DateTime = `Date_Time (LST/LDT)`) %>% 
-    separate(DateTime, into = c("Date", "Time"), sep = "([ ])") %>%
-    separate(Date, into = c("Year", "Month", "Day"), sep = "([-])")%>% 
+    transmute(Date = lubridate::date(`Date_Time (LST/LDT)`),
+              Event, 
+              `Speed (knots)`) %>%
     # select only data from October and November
-    filter(Month == 10 | Month == 11) %>%
+    filter(lubridate::month(Date) == 10 | lubridate::month(Date) == 11) %>%
     # find the maximum flow and ebb speeds for each date
     filter(`Speed (knots)` != "-") %>% 
     mutate(`Speed (knots)` = as.numeric(`Speed (knots)`)) %>%
-    group_by(Month, Day, Event) %>%
+    group_by(Date, Event) %>%
     top_n(1, abs(`Speed (knots)`)) %>%
     # select important variables
     dplyr::select(
-    Year, Month, Day, Event, `Speed (knots)`) %>% 
+    Date, Event, `Speed (knots)`) %>% 
     distinct() %>% 
     # calculate the amplitude of tidal current change from max flood to max ebb
-    mutate(speed = abs(`Speed (knots)`)) %>%
-    group_by(Month, Day) %>%
-    mutate(Amplitude = speed + lead(speed),
+    mutate(floodSpeed = abs(`Speed (knots)`)) %>%
+    group_by(Date) %>%
+    mutate(Amplitude = floodSpeed + lead(floodSpeed),
            Station = fList[i]) %>% 
     ungroup() %>% 
     separate(Station,
-             into = c("Trash1", "Trash2", "Trash3", "Trash4", "Trash5", "Trash6", "Trash7", "Trash8", "Station"),
-             sep = "([/])") %>% 
-    separate(Station,
-             into = c("Station", "Trash9", "Trash10", "Trash11"),
-             sep = "([_])")%>%
+             into = c("Trash1", "Trash2", "Trash3", "Station")) %>% 
     filter(Event == 'flood' & Amplitude != 0) %>% 
-    dplyr::select(-c(`Speed (knots)`)) 
+    dplyr::select(-c(Event,`Speed (knots)`, Trash1, Trash2, Trash3)) 
   name <- paste(currents[1,1], currents[1,'Station'], sep = "_")
-  #name <- paste(currents[1,1], currents[1,5], sep = "_")
-  #write_csv(currents, paste("~/Desktop/PEF/2019/", name, ".csv", sep = ""))
   current_amplitudes_2019 <- rbind(currents, current_amplitudes_2019) # update with year x2
+  print(name)
   rm(currents, name)
-  print(i)
 }
-current_amplitudes_2019$Year <- "2019" 
 
 ## 2020 ##
-fList <- list.files("~/Desktop/PEF/Tides/2020/", full.names = T) # update with file path from chunk 4
+fList <- list.files("data/Tides/2020/", full.names = T) # update with file path from chunk 4
 
 current_amplitudes_2020 <- data.frame() 
 
 for(i in 1:length(fList)) {
-  currents <- read_csv(fList[i]) 
-  currents <- currents %>% mutate(
-    DateTime = `Date_Time (LST/LDT)`
-  )
-  currents <- currents %>% separate(DateTime, into = c("Date", "Time"), sep = "([ ])")
-  currents <- currents %>% separate(Date, into = c("Year", "Month", "Day"), sep = "([-])")
-  currents <- currents %>% filter(Month == 10 | Month == 11) # select only data from October and November
-  currents <- currents %>% filter(`Speed (knots)` != "-")
-  currents$`Speed (knots)` <- as.numeric(currents$`Speed (knots)`)
-  currents <- currents %>% group_by(Month, Day, Event) %>%
-    top_n(1, abs(`Speed (knots)`))
-  currents <- currents %>% dplyr::select(
-    Year, Month, Day, Event, `Speed (knots)`
-  )
-  currents <- distinct(currents)
-  currents$`Speed (knots)` <- abs(currents$`Speed (knots)`)
-  currents <- currents %>% group_by(Month, Day) %>%
-    mutate(Amplitude = `Speed (knots)` + lag(`Speed (knots)`))
-  currents$Station <- fList[i]
-  currents <- currents %>% separate(Station, into = c("Trash1", "Trash2", "Trash3", "Trash4", "Trash5", "Trash6", "Trash7", "Trash8", "Station"), sep = "([/])")
-  currents <- currents %>% separate(Station, into = c("Station", "Trash9", "Trash10", "Trash11"), sep = "([_])")
-  currents <- currents %>% dplyr::select(Year, Month, Day, Amplitude, Station)
-  currents <- currents %>% filter(Amplitude != 0)
-  name <- paste(currents[1,1], currents[1,5], sep = "_")
-  #name <- paste(currents[1,1], currents[1,5], sep = "_")
-  #write_csv(currents, paste("~/Desktop/PEF/2020/", name, ".csv", sep = ""))
-  currents <- ungroup(currents)
+  currents <- 
+    read_csv(fList[i]) %>%
+    transmute(Date = lubridate::date(`Date_Time (LST/LDT)`),
+              Event, 
+              `Speed (knots)`) %>%
+    # select only data from October and November
+    filter(lubridate::month(Date) == 10 | lubridate::month(Date) == 11) %>%
+    # find the maximum flow and ebb speeds for each date
+    filter(`Speed (knots)` != "-") %>% 
+    mutate(`Speed (knots)` = as.numeric(`Speed (knots)`)) %>%
+    group_by(Date, Event) %>%
+    top_n(1, abs(`Speed (knots)`)) %>%
+    # select important variables
+    dplyr::select(
+      Date, Event, `Speed (knots)`) %>% 
+    distinct() %>% 
+    # calculate the amplitude of tidal current change from max flood to max ebb
+    mutate(floodSpeed = abs(`Speed (knots)`)) %>%
+    group_by(Date) %>%
+    mutate(Amplitude = floodSpeed + lead(floodSpeed),
+           Station = fList[i]) %>% 
+    ungroup() %>% 
+    separate(Station,
+             into = c("Trash1", "Trash2", "Trash3", "Station")) %>% 
+    filter(Event == 'flood' & Amplitude != 0) %>% 
+    dplyr::select(-c(Event,`Speed (knots)`, Trash1, Trash2, Trash3))
+  name <- paste(currents[1,1], currents[1,'Station'], sep = "_")
   current_amplitudes_2020 <- rbind(currents, current_amplitudes_2020) # update with year x2
   rm(currents, name)
   print(i)
 }
-current_amplitudes_2020$Year <- "2020" 
 
 ## 2021 ##
-fList <- list.files("~/Desktop/PEF/Tides/2021/", full.names = T) # update with file path from chunk 4
+fList <- list.files("data/Tides/2021/", full.names = T) # update with file path from chunk 4
 
 current_amplitudes_2021 <- data.frame() 
 
 for(i in 1:length(fList)) {
-  currents <- read_csv(fList[i]) 
-  currents <- currents %>% mutate(
-    DateTime = `Date_Time (LST/LDT)`
-  )
-  currents <- currents %>% separate(DateTime, into = c("Date", "Time"), sep = "([ ])")
-  currents <- currents %>% separate(Date, into = c("Year", "Month", "Day"), sep = "([-])")
-  currents <- currents %>% filter(Month == 10 | Month == 11) # select only data from October and November
-  currents <- currents %>% filter(`Speed (knots)` != "-")
-  currents$`Speed (knots)` <- as.numeric(currents$`Speed (knots)`)
-  currents <- currents %>% group_by(Month, Day, Event) %>%
-    top_n(1, abs(`Speed (knots)`))
-  currents <- currents %>% dplyr::select(
-    Year, Month, Day, Event, `Speed (knots)`
-  )
-  currents <- distinct(currents)
-  currents$`Speed (knots)` <- abs(currents$`Speed (knots)`)
-  currents <- currents %>% group_by(Month, Day) %>%
-    mutate(Amplitude = `Speed (knots)` + lag(`Speed (knots)`))
-  currents$Station <- fList[i]
-  currents <- currents %>% separate(Station, into = c("Trash1", "Trash2", "Trash3", "Trash4", "Trash5", "Trash6", "Trash7", "Trash8", "Station"), sep = "([/])")
-  currents <- currents %>% separate(Station, into = c("Station", "Trash9", "Trash10", "Trash11"), sep = "([_])")
-  currents <- currents %>% dplyr::select(Year, Month, Day, Amplitude, Station)
-  currents <- currents %>% filter(Amplitude != 0)
-  name <- paste(currents[1,1], currents[1,5], sep = "_")
-  #name <- paste(currents[1,1], currents[1,5], sep = "_")
-  #write_csv(currents, paste("~/Desktop/PEF/2021/", name, ".csv", sep = ""))
-  currents <- ungroup(currents)
+  currents <- 
+    read_csv(fList[i]) %>%
+    transmute(Date = lubridate::date(`Date_Time (LST/LDT)`),
+              Event, 
+              `Speed (knots)`) %>%
+    # select only data from October and November
+    filter(lubridate::month(Date) == 10 | lubridate::month(Date) == 11) %>%
+    # find the maximum flow and ebb speeds for each date
+    filter(`Speed (knots)` != "-") %>% 
+    mutate(`Speed (knots)` = as.numeric(`Speed (knots)`)) %>%
+    group_by(Date, Event) %>%
+    top_n(1, abs(`Speed (knots)`)) %>%
+    # select important variables
+    dplyr::select(
+      Date, Event, `Speed (knots)`) %>% 
+    distinct() %>% 
+    # calculate the amplitude of tidal current change from max flood to max ebb
+    mutate(floodSpeed = abs(`Speed (knots)`)) %>%
+    group_by(Date) %>%
+    mutate(Amplitude = floodSpeed + lead(floodSpeed),
+           Station = fList[i]) %>% 
+    ungroup() %>% 
+    separate(Station,
+             into = c("Trash1", "Trash2", "Trash3", "Station")) %>% 
+    filter(Event == 'flood' & Amplitude != 0) %>% 
+    dplyr::select(-c(Event,`Speed (knots)`, Trash1, Trash2, Trash3)) 
+  name <- paste(currents[1,1], currents[1,'Station'], sep = "_")
   current_amplitudes_2021 <- rbind(currents, current_amplitudes_2021) # update with year x2
   rm(currents, name)
   print(i)
 }
 
-current_amplitudes_2021$Year <- "2021" 
+# combine and save the data
+tide_currents <-
+  rbind(current_amplitudes_2019, current_amplitudes_2020, current_amplitudes_2021)
+
+rm(current_amplitudes_2019, current_amplitudes_2020, current_amplitudes_2021)
+
+write_csv(tide_currents, 'data/clean/tide_currents.csv')
 
 
 # TIDE HEIGHT -------------------------------------------------------------
@@ -237,18 +233,17 @@ delta_2021 <-
   mutate(
     Date = lubridate::ymd(Date))
 
-
-delta.tide.height <- rbind(delta_2017, delta_2018, delta_2019, delta_2020, delta_2021)
-rm(delta_2017, delta_2018, delta_2019, delta_2020, delta_2021)
-
 # find lowest low and highest high for each day
 delta.tide.height <- 
-  delta.tide.height %>%
+  rbind(delta_2017, delta_2018, delta_2019, delta_2020, delta_2021) %>%
   group_by(Date) %>% 
   summarize(HH = max(Prediction),
             LL = min(Prediction)) %>% 
   mutate(dth = (HH - LL))
 
+rm(delta_2017, delta_2018, delta_2019, delta_2020, delta_2021)
 
+# save the data
+write_csv(delta.tide.height, 'data/clean/dth.csv')
 
 
