@@ -32,7 +32,7 @@ cruises_ocean_time_all <- data.frame(
   mutate(Date = lubridate::date(Date))
 
 # get environmental variables for each cruise date
-
+## phytoplankton
 LO_phyto <- 
   left_join(phyto, cruises_ocean_time_all) %>% 
   # select data from cruise dates
@@ -40,7 +40,7 @@ LO_phyto <-
   # find the average value in each grid cell on that day (4 LiveOcean points per grid)
   group_by(Date, grid_id) %>% 
   summarise(
-    phyto = mean(phyto, na.rm = TRUE)) %>% 
+    gridPhyto = mean(phyto, na.rm = TRUE)) %>% 
   # assign zones to each grid cell
   left_join(transect_zones, by = 'grid_id', relationship = 'many-to-many') %>% 
   # filter out grid cells with no zones
@@ -48,14 +48,51 @@ LO_phyto <-
   # take the average daily value in each zone
   group_by(Date, zone) %>%
   summarise(
-    phyto = mean(phyto)) %>% 
+    zonePhyto = mean(gridPhyto)) %>% 
   # change zone to factor
   mutate(zone = factor(zone))
 
-
-
-LO_temp <- left_join(temp, cruises_ocean_time_all)
-LO_salt <- left_join(salt, cruises_ocean_time_all)
+## temperature
+# LO_temp <- 
+  left_join(temp, cruises_ocean_time_all) %>% 
+  # select data from cruise dates
+  filter(!is.na(cruise)) %>% 
+  # find the average value in each grid cell on that day (4 LiveOcean points per grid)
+  group_by(Date, grid_id) %>% 
+  summarise(
+    gridTemp = mean(temp, na.rm = TRUE),
+    temp_sd = sd(temp, na.rm = T)) %>% 
+  # assign zones to each grid cell
+  left_join(transect_zones, by = 'grid_id', relationship = 'many-to-many') %>% 
+  # filter out grid cells with no zones
+  filter(!is.na(zone)) %>% 
+  # take the average daily value in each zone
+  group_by(Date, zone) %>%
+  summarise(
+    zoneTemp = mean(gridTemp),
+    temp_sd = mean(temp_sd)) %>% 
+  # change zone to factor
+  mutate(zone = factor(zone))
+  
+## salinity
+LO_salt <-  
+  left_join(salt, cruises_ocean_time_all) %>% 
+  # select data from cruise dates
+  filter(!is.na(cruise)) %>% 
+  # find the average value in each grid cell on that day (4 LiveOcean points per grid)
+  group_by(Date, grid_id) %>% 
+  summarise(
+    gridSalt = mean(salt, na.rm = TRUE)) %>% 
+  # assign zones to each grid cell
+  left_join(transect_zones, by = 'grid_id', relationship = 'many-to-many') %>% 
+  # filter out grid cells with no zones
+  filter(!is.na(zone)) %>% 
+  # take the average daily value in each zone
+  group_by(Date, zone) %>%
+  summarise(
+    zoneSalt = mean(gridSalt)) %>% 
+  # change zone to factor
+  mutate(zone = factor(zone))
 
 LO_phyto <- LO_phyto %>% 
 LO_temp <- LO_temp %>% filter(!is.na(cruise))
