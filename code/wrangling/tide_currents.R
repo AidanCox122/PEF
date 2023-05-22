@@ -158,6 +158,38 @@ tide_currents <-
 
 rm(current_amplitudes_2019, current_amplitudes_2020, current_amplitudes_2021)
 
+# calculate static tidal current proxy
+# does the strength of tidal currents vary between years at each station?
+proxy <- rbind(current_amplitudes_2019, current_amplitudes_2020, current_amplitudes_2021)
+
+proxy$Year <- factor(proxy$Year)
+
+# visually compare the data
+ggplot(data = proxy) +
+  geom_point(aes(x = Station, y = Amplitude, color = Year)) +
+  coord_flip() +
+  theme_classic() 
+
+ggplot(data = proxy) +
+  geom_jitter(aes(x = Year, y = Amplitude, color = Year), alpha = 0.5) +
+  geom_boxplot(aes(x = Year, y = Amplitude), color = "black", fill = NA) +
+  coord_flip() +
+  theme_classic() 
+
+proxy %>% group_by(Year) %>%
+  summarise(
+    count = n(),
+    mean = mean(Amplitude, na.rm = TRUE),
+    sd = sd(Amplitude, na.rm = TRUE)
+  )
+
+# ANOVA between years
+tide.aov <- aov(Amplitude ~ Year, data = proxy)
+summary(tide.aov)
+
+rm(proxy, tide.aov) #cleanup
+
+
 write_csv(tide_currents, 'data/clean/tide_currents.csv')
 
 

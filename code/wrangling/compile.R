@@ -31,7 +31,7 @@ cruises_ocean_time_all <- data.frame(
   cruise = c(seq(1,28))) %>% 
   mutate(Date = lubridate::date(Date))
 
-# get environmental variables for each cruise date
+## get environmental variables for each cruise date --------------------------
 ## phytoplankton
 LO_phyto <- 
   left_join(phyto, cruises_ocean_time_all) %>% 
@@ -53,7 +53,8 @@ LO_phyto <-
   mutate(zone = factor(zone))
 
 ## temperature
-# LO_temp <- 
+LO_temp <-
+  # identify data from cruise dates
   left_join(temp, cruises_ocean_time_all) %>% 
   # select data from cruise dates
   filter(!is.na(cruise)) %>% 
@@ -94,6 +95,63 @@ LO_salt <-
   # change zone to factor
   mutate(zone = factor(zone))
 
-LO_phyto <- LO_phyto %>% 
-LO_temp <- LO_temp %>% filter(!is.na(cruise))
-LO_salt <- LO_salt %>% filter(!is.na(cruise))
+
+# compile data ------------------------------------------------------------
+
+## compile static data
+channel.width <- read_csv("data/channel_width.csv")
+
+base <- 
+  read_csv("data/sja_grid.csv") %>% 
+  # add channel width variable
+  inner_join(channel.width) %>% 
+  rename(
+    NS_name = name,
+    EW_name = `EW Joined_name`,
+    NS_width = `length(m)`,
+    EW_width = `EW Joined_length(m)`) %>% 
+  dplyr::select(grid_id, lat_deg, long_deg, centroid_depth, Station, average_depth, bathy__stdev, shore_distance, NS_width, EW_width) %>% 
+  # eliminate overland points
+  filter(centroid_depth <= 0 | average_depth <= 0) %>% 
+  filter(!is.na(centroid_depth)) %>% 
+  # remove one grid cell without channel width data
+  filter(grid_id != 659)
+
+
+# determine single channel width
+ns <- 
+  base %>%
+  filter((NS_width - EW_width) < 0 | is.na(EW_width)) %>% 
+  dplyr::select(grid_id, NS_width) %>% 
+  rename(
+  channel_width = NS_width)
+
+ew <- 
+  base %>% 
+  filter((NS_width - EW_width) > 0 | is.na(NS_width)) %>% 
+  dplyr::select(grid_id, EW_width) %>% 
+  rename(
+  channel_width = EW_width)
+
+width <- rbind(ns,ew)
+
+base <- 
+  inner_join(base, width, by = "grid_id") %>% 
+  dplyr::select(-c(NS_width, EW_width))
+
+# cleanup
+rm(ns, ew, width)
+
+# add static tidal current proxy
+tcur <- 
+  read_csv('data/clean/tide_currents.csv')
+
+base <- inner_join(base, tcur, by = "Station")
+
+# rename using variable codes
+base <- base %>% rename(
+  bathy = average_depth,
+  topog = bathy__stdev,
+  dist = shore_distance,
+  channel_width = channel_width
+)
