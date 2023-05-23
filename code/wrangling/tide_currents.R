@@ -156,20 +156,19 @@ for(i in 1:length(fList)) {
 tide_currents <-
   rbind(current_amplitudes_2019, current_amplitudes_2020, current_amplitudes_2021)
 
+write_csv(tide_currents, 'data/clean/tide_currents.csv')
+
 rm(current_amplitudes_2019, current_amplitudes_2020, current_amplitudes_2021)
 
 # calculate static tidal current proxy
 # does the strength of tidal currents vary between years at each station?
-proxy <- rbind(current_amplitudes_2019, current_amplitudes_2020, current_amplitudes_2021)
 
-proxy$Year <- factor(proxy$Year)
+proxy <-
+  tide_currents %>% 
+  mutate(Year = lubridate::year(Date),
+         Year = factor(Year))
 
-# visually compare the data
-ggplot(data = proxy) +
-  geom_point(aes(x = Station, y = Amplitude, color = Year)) +
-  coord_flip() +
-  theme_classic() 
-
+# visual comparison
 ggplot(data = proxy) +
   geom_jitter(aes(x = Year, y = Amplitude, color = Year), alpha = 0.5) +
   geom_boxplot(aes(x = Year, y = Amplitude), color = "black", fill = NA) +
@@ -183,15 +182,36 @@ proxy %>% group_by(Year) %>%
     sd = sd(Amplitude, na.rm = TRUE)
   )
 
-# ANOVA between years
-tide.aov <- aov(Amplitude ~ Year, data = proxy)
-summary(tide.aov)
+variable_stations <-
+  tibble()
+
+for(n in unique(proxy$Station)) {
+  station <- 
+    filter(proxy, Station == n)
+  # conduct an ANOVA to test for differences between years at each station
+  tide.aov <- aov(floodSpeed ~ Year, data = station)
+  # extract the p-value
+  p <- summary(tide.aov)[[1]]$'Pr(>F)'[1]
+  
+  if(p < 0.05) {
+    output <-
+      tibble(
+        Station = n,
+        `p-value` = p)
+    
+    variable_stations <- 
+      rbind(variable_stations, output)
+    
+    print(paste('FOUND DIFFERENCE @', n), sep = ' ')
+  } else {
+    print(paste('done with', n, sep = ' '))}
+}
+
+# there is a significant difference in flood speeds between years only at one station
+# PUG1724 which is located in Haro Strait near Lime Kiln State park
+# median current speeds were higher in 2021 at this site (p = 0.01)
 
 rm(proxy, tide.aov) #cleanup
-
-
-write_csv(tide_currents, 'data/clean/tide_currents.csv')
-
 
 # TIDE HEIGHT -------------------------------------------------------------
 
