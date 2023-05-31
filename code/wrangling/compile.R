@@ -3,6 +3,15 @@
 
 library(tidyverse) 
 
+tide_currents <- 
+  read_csv('data/clean/tide_currents.csv')
+# creating static tidal current proxy
+tcur <- 
+  tide_currents %>% 
+  group_by(Station) %>% 
+  summarize(
+    tcur = mean(floodSpeed))
+
 # liveocean data
 phyto <-
   read_csv('data/clean/phyto.csv')
@@ -14,7 +23,7 @@ salt <-
   read_csv('data/clean/salt.csv')
 
 
-# cruise details ------------------------------------------------------------
+# cruise dates and zones ------------------------------------------------------------
 
 # determine what grid cells fall within transect bounds
 transect_zones <- 
@@ -31,7 +40,7 @@ cruises_ocean_time_all <- data.frame(
   cruise = c(seq(1,28))) %>% 
   mutate(Date = lubridate::date(Date))
 
-## get environmental variables for each cruise date --------------------------
+## summarize environmental variables for each cruise date within each zone --------------------------
 ## phytoplankton
 LO_phyto <- 
   left_join(phyto, cruises_ocean_time_all) %>% 
@@ -98,6 +107,8 @@ LO_salt <-
 
 # compile data ------------------------------------------------------------
 
+## static variables --------------------------------------------------------
+
 ## compile static data
 channel.width <- read_csv("data/channel_width.csv")
 
@@ -137,21 +148,35 @@ width <- rbind(ns,ew)
 
 base <- 
   inner_join(base, width, by = "grid_id") %>% 
-  dplyr::select(-c(NS_width, EW_width))
+  dplyr::select(-c(NS_width, EW_width)) %>% 
+  # add static tidal current proxy
+  inner_join(tcur, by = "Station") %>% 
+  # rename using variable codes
+  rename(
+    bathy = average_depth,
+    topog = bathy__stdev,
+    dist = shore_distance,
+    channel_width = channel_width)
 
 # cleanup
 rm(ns, ew, width)
 
-# add static tidal current proxy
-tcur <- 
-  read_csv('data/clean/tide_currents.csv')
 
-base <- inner_join(base, tcur, by = "Station")
+##  dynamic variables -------------------------------------------------------
 
-# rename using variable codes
-base <- base %>% rename(
-  bathy = average_depth,
-  topog = bathy__stdev,
-  dist = shore_distance,
-  channel_width = channel_width
-)
+# convert oceantime to date
+phyto$Date <- as.Date(phyto$ocean_time, origin = "2016-12-31")
+temp$Date <- as.Date(temp$ocean_time, origin = "2016-12-31")
+salt$Date <- as.Date(salt$ocean_time, origin = "2016-12-31")
+
+phyto <- phyto %>% group_by(Date, grid_id) %>% summarise(phyto = mean(phyto))
+temp <- temp %>% group_by(Date, grid_id) %>% summarise(sst = mean(temp), temp_sd = sd(temp, na.rm = T))
+salt <- salt %>% group_by(Date, grid_id) %>% summarise(salt = mean(salt))
+
+env_all <- 
+  base %>% 
+  right_join(phyto, by = "grid_id") %>% 
+  inner_join(temp, by = c("grid_id", "Date")) %>% 
+  inner_join(salt, by = c("grid_id", "Date"))
+
+env_all <- env_all %>% filter(!is.na(tcur))
