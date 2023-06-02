@@ -10,7 +10,7 @@ tcur <-
   tide_currents %>% 
   group_by(Station) %>% 
   summarize(
-    tcur = mean(floodSpeed))
+    tcur = mean(Amplitude))
 
 # liveocean data
 phyto <-
@@ -110,7 +110,7 @@ LO_salt <-
 ## static variables --------------------------------------------------------
 
 ## compile static data
-channel.width <- read_csv("data/channel_width.csv")
+channel.width <- read_csv("data/channel_width.csv") # if feeling ambitious: could find narrowest channel at each point here
 
 base <- 
   read_csv("data/sja_grid.csv") %>% 
@@ -177,6 +177,8 @@ env_all <-
   base %>% 
   right_join(phyto, by = "grid_id") %>% 
   inner_join(temp, by = c("grid_id", "Date")) %>% 
-  inner_join(salt, by = c("grid_id", "Date"))
+  inner_join(salt, by = c("grid_id", "Date")) %>% 
+  filter(!is.na(tcur))
 
-env_all <- env_all %>% filter(!is.na(tcur))
+write_csv(env_all, 'data/clean/env_grid.csv')
+

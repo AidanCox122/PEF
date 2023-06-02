@@ -852,7 +852,7 @@ MBM_master <- rbind(GL, CoMu, HPorp, HSeal)
 # Mike's version
 ```{r Mike's version}
 # read information on species codes, names and groups
-species_names <- read_excel("~/Desktop/PEF/MBM_data/MBM_Data2008-2021_MASTER.xlsx", range = "metadata!A10:f45")
+species_names <- read_excel("data/MBM_data/MBM_Data2008-2021_MASTER.xlsx", range = "metadata!A10:f45")
 
 # read data
 byrecord <- read_excel("~/Desktop/PEF/MBM_data/MBM_Data2008-2021_MASTER.xlsx", range = "countbyrecord!A1:AN30000")
@@ -923,7 +923,7 @@ mydata_bydatezone %>%
 mydata_bydatezone$Density <- round(mydata_bydatezone$Count / mydata_bydatezone$Effort_sqkm,2)
 ```
 
-# compare my calculations with Matt's
+# compare my calculations with Mike's
 ```{r MBM master comparison}
 mydata_bydatezone$Zone <- factor(mydata_bydatezone$Zone)
 test <- inner_join(MBM_master, mydata_bydatezone)
