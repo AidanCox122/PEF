@@ -178,7 +178,8 @@ env_all <-
   right_join(phyto, by = "grid_id") %>% 
   inner_join(temp, by = c("grid_id", "Date")) %>% 
   inner_join(salt, by = c("grid_id", "Date")) %>% 
-  filter(!is.na(tcur))
+  filter(!is.na(tcur)) %>% 
+  left_join(transect_zones, by = 'grid_id', relationship = 'many-to-many')
 
 write_csv(env_all, 'data/clean/env_grid.csv')
 
