@@ -19,15 +19,20 @@ env_grid <-
 
 mbm_data <- 
   read_csv('data/clean/mbm_master.csv') %>% 
-  rename(zone = Zone)
+  rename(zone = Zone) %>% 
+  mutate(zone = factor(zone))
 
 # add environmental data to each mbm obs. 
 interannual_mbm_grid <- 
   env_grid %>% 
   # remove grid cells that do not fall witin zones (cannot be used to train)
   filter(!is.na(zone)) %>% 
+  # change zone to a factor
+  mutate(zone = factor(zone)) %>% 
   # select variables for model
   dplyr::select(Date, zone, bathy:salt) %>% 
+  # scale predictors
+  mutate_if(is.numeric, base::scale) %>% 
   # find average value in each zone on each cruise date
   group_by(Date, zone) %>% 
   summarize_if(is.numeric, mean, na.rm = T) %>%  # n = 1644
@@ -42,6 +47,7 @@ interannual_mbm_grid <-
   ungroup() %>% 
   mutate(countInt = round(Count,0))
 
+# scale the variables 
 
 # model training -----------------------------------------------------------
  
@@ -91,12 +97,13 @@ getWeightIANN(base = c('bathy', 'dist', 'salt', 'phyto', 'temp_sd'),
               training = interannual_mbm_grid)
 
 # roughly 50/50 w. base model so stopping here
+
 ### best model predicting interannual variability in GL: -----
 GL_interann_mod <- 
   gam(formula = countInt~ s(bathy,k=4)+s(dist,k=4)+s(salt,k=4)+s(phyto,k=4)+s(temp_sd,k=4),
       family = poisson,
       offset = log(Effort_sqkm),
-      data = data)
+      data = (interannual_mbm_grid %>% filter(Species_code == 'GL')))
 summary(GL_interann_mod)
 # r-squ. adj = 0.619
 
@@ -227,3 +234,8 @@ HPorp_interann_mod <-
       offset = log(Effort_sqkm),
       data = data)
 summary(HPorp_interann_mod) # this is significant!
+
+
+# Leave-one-out Validation ------------------------------------------------
+
+
