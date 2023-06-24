@@ -30,7 +30,7 @@ getWeightIANN <-
           paste('countInt~',
                 's(',
                 x,
-                ',k=4)',
+                ',k=3)',
                 sep = '')
         
         m1 <- 
@@ -59,7 +59,7 @@ getWeightIANN <-
       output = c()) 
     # create a formula component for each element of base
     for(i in 1:length(base)) {
-      output <- tibble(output = paste0('s(', base[i], ',k=4)', collapse = '', sep = ''))
+      output <- tibble(output = paste0('s(', base[i], ',k=3)', collapse = '', sep = ''))
       base_out <- rbind(base_out, output)}
       
     # find AIC for each test model
@@ -68,7 +68,7 @@ getWeightIANN <-
           paste('countInt~', paste0(pull(base_out, output), collapse = '', sep = '+'),
                 's(',
                 x,
-                ',k=4)',
+                ',k=3)',
                 sep = '')
         
         m1 <- 

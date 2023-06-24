@@ -50,7 +50,7 @@ interannual_mbm_grid <-
 # scale the variables 
 
 # model training -----------------------------------------------------------
- 
+
 interannual_mbm_grid %>% 
   dplyr::select('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt') %>% 
   chart.Correlation()
@@ -74,25 +74,25 @@ getWeightIANN(base = c('bathy', 'dist'),
               test = c('phyto', 'sst', 'temp_sd', 'salt'),
               species = 'GL',
               training = interannual_mbm_grid)
-# salinity is the best predictor
+# sst is the best predictor
 
 # forward selection 4
-getWeightIANN(base = c('bathy', 'dist', 'salt'),
-              test = c('phyto', 'sst', 'temp_sd'),
+getWeightIANN(base = c('bathy', 'dist', 'sst'),
+              test = c('phyto', 'salt', 'temp_sd'),
               species = 'GL',
               training = interannual_mbm_grid)
 # phytoplankton is the best predictor
 
 # forward selection 5
-getWeightIANN(base = c('bathy', 'dist', 'salt', 'phyto'),
-              test = c('sst', 'temp_sd'),
+getWeightIANN(base = c('bathy', 'dist', 'sst', 'phyto'),
+              test = c('salt', 'temp_sd'),
               species = 'GL',
               training = interannual_mbm_grid)
 # temperature standard deviation is the best predictor
 
 # forward selection 6
-getWeightIANN(base = c('bathy', 'dist', 'salt', 'phyto', 'temp_sd'),
-              test = c('sst'),
+getWeightIANN(base = c('bathy', 'dist', 'sst', 'phyto', 'temp_sd'),
+              test = c('salt'),
               species = 'GL',
               training = interannual_mbm_grid)
 
@@ -100,12 +100,12 @@ getWeightIANN(base = c('bathy', 'dist', 'salt', 'phyto', 'temp_sd'),
 
 ### best model predicting interannual variability in GL: -----
 GL_interann_mod <- 
-  gam(formula = countInt~ s(bathy,k=4)+s(dist,k=4)+s(salt,k=4)+s(phyto,k=4)+s(temp_sd,k=4),
+  gam(formula = countInt~ s(bathy,k=3)+s(dist,k=3)+s(sst,k=3)+s(phyto,k=3)+s(temp_sd,k=3),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'GL')))
 summary(GL_interann_mod)
-# r-squ. adj = 0.619
+# r-squ. adj = 0.596
 
 ## CoMu ----------------------------------------------------------------------
 # forward selection 1
@@ -119,32 +119,32 @@ getWeightIANN(base = c('dist'),
               test = c('bathy', 'phyto', 'sst', 'temp_sd', 'salt'),
               species = 'CoMu',
               training = interannual_mbm_grid)
-# phytoplankton concentration is the best predictor
+# temperature standard deviation is the best predictor
 
 # forward selection 3
-getWeightIANN(base = c('dist', 'phyto'),
-              test = c('bathy', 'sst', 'temp_sd', 'salt'),
+getWeightIANN(base = c('dist', 'temp_sd'),
+              test = c('bathy', 'sst', 'phyto', 'salt'),
+              species = 'CoMu',
+              training = interannual_mbm_grid)
+# phytoplankton concentration is the best predictor
+
+# forward selection 4
+getWeightIANN(base = c('dist', 'temp_sd', 'phyto'),
+              test = c('bathy', 'sst', 'salt'),
+              species = 'CoMu',
+              training = interannual_mbm_grid)
+# bathymetry is the best predictor
+
+# forward selection 5
+getWeightIANN(base = c('dist', 'temp_sd', 'phyto', 'bathy'),
+              test = c('sst', 'salt'),
               species = 'CoMu',
               training = interannual_mbm_grid)
 # salinity is the best predictor
 
-# forward selection 4
-getWeightIANN(base = c('dist', 'phyto', 'salt'),
-              test = c('bathy', 'sst', 'temp_sd'),
-              species = 'CoMu',
-              training = interannual_mbm_grid)
-# sst is the best predictor
-
-# forward selection 5
-getWeightIANN(base = c('dist', 'phyto', 'salt', 'sst'),
-              test = c('bathy', 'temp_sd'),
-              species = 'CoMu',
-              training = interannual_mbm_grid)
-# sst_sd is the best predictor
-
 # forward selection 6
-getWeightIANN(base = c('dist', 'phyto', 'salt', 'sst', 'temp_sd'),
-              test = c('bathy'),
+getWeightIANN(base = c('dist', 'temp_sd', 'phyto', 'bathy', 'salt'),
+              test = c('sst'),
               species = 'CoMu',
               training = interannual_mbm_grid)
 # bathymetry is the best predictor 
@@ -152,12 +152,12 @@ getWeightIANN(base = c('dist', 'phyto', 'salt', 'sst', 'temp_sd'),
 
 ### best model for CoMu ----
 CoMu_interann_mod <- 
-  gam(formula = countInt~s(dist,k=4)+s(phyto,k=4)+s(salt,k=4)+s(sst,k=4)+s(temp_sd,k=4),
+  gam(formula = countInt~s(dist,k=3)+s(temp_sd,k=3)+s(phyto,k=3)+s(bathy,k=3)+s(salt,k=3)+s(sst,k=3),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu')))
 summary(CoMu_interann_mod)
-# r-sq. adj. = 0.795
+# r-sq. adj. = 0.452
 
 ## HSeal ----------------------------------------------------------------------
 
@@ -172,23 +172,38 @@ getWeightIANN(base = c('bathy'),
               test = c('topog', 'dist', 'phyto', 'sst', 'temp_sd', 'salt'),
               species = 'HSeal',
               training = interannual_mbm_grid)
-# phytoplankton concentration is the best predictor
+# phytoplankton concentration is the best predictor 
+# - THESE ARE ONLY TWO SIGNIF. PREDICTORS
 
 # forward selection 3
 getWeightIANN(base = c('bathy', 'phyto'),
               test = c('topog', 'dist', 'sst', 'temp_sd', 'salt'),
               species = 'HSeal',
               training = interannual_mbm_grid)
-# topography is next best predictor but not statistically significant stop here
+# sst is next best predictor
+
+# forward selection 4
+getWeightIANN(base = c('bathy', 'phyto', 'sst'),
+              test = c('topog', 'dist', 'temp_sd', 'salt'),
+              species = 'HSeal',
+              training = interannual_mbm_grid)
+# topography is the next best predictor
+
+# forward selection 4
+getWeightIANN(base = c('bathy', 'phyto', 'sst', 'topog'),
+              test = c('temp_sd', 'salt'),
+              species = 'HSeal',
+              training = interannual_mbm_grid)
+# 50/50 between temp_sd and null model, stop here
 
 ### best model for HSeals ----
 HSeal_interann_mod <- 
-  gam(formula = countInt~ s(bathy,k=4)+s(phyto,k=4),
-    family = poisson,
-    offset = log(Effort_sqkm),
-    data = (interannual_mbm_grid %>% filter(Species_code == 'HSeal')))
+  gam(formula = countInt~ s(bathy,k=3)+s(phyto,k=3),
+      family = poisson,
+      offset = log(Effort_sqkm),
+      data = (interannual_mbm_grid %>% filter(Species_code == 'HSeal')))
 summary(HSeal_interann_mod)
-# r-squ. adj. = 0.617
+# r-squ. adj. = 0.624
 
 
 ## HPorp ----------------------------------------------------------------------
@@ -210,24 +225,16 @@ getWeightIANN(base = c('bathy', 'sst'),
               test = c('topog', 'dist', 'phyto', 'temp_sd', 'salt'),
               species = 'HPorp',
               training = interannual_mbm_grid)
-# salinity is the best predictor
-# BUT salt makes sst insignifiant and so we'll stop here
-
-# forward selection 4
-getWeightIANN(base = c('bathy', 'sst', 'salt'),
-              test = c('topog', 'dist', 'phyto', 'temp_sd'),
-              species = 'HPorp',
-              training = interannual_mbm_grid)
-# null model is best
+# NULL MODEL IS NEXT BEST
 
 ### best model for HSPorps ----
 HPorp_interann_mod <- 
-  gam(formula = countInt~ s(bathy,k=4)+s(sst, k=4)+s(salt, k=4),
+  gam(formula = countInt~ s(bathy,k=3)+s(sst, k=3),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'HPorp')))
-summary(HPorp_interann_mod) # this is (nearly) significant!
-# adj. r-squared: 0.621
+summary(HPorp_interann_mod) # this not significant!
+# adj. r-squared: 0.152
 
 # Leave-one-out Validation ------------------------------------------------
 # This chunk performs leave-one-year-out validation on course-scale habitat models:
@@ -247,19 +254,19 @@ for (y in unique(cv_base$year)) {
   train <- cv_base %>% filter(year != y)
   test <- cv_base %>% filter(year == y)
   ## train a model for each species
-  lm.HP <- gam(formula = HPorp~ s(bathy,k=4)+s(sst, k=4)+s(salt, k=4),
+  lm.HP <- gam(formula = HPorp~s(bathy,k=3)+s(sst, k=3),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
-  lm.HS <- gam(formula = HSeal~ s(bathy,k=4)+s(phyto,k=4),
+  lm.HS <- gam(formula = HSeal~ s(bathy,k=3)+s(phyto,k=3),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
-  lm.CM <- gam(formula = CoMu~s(dist,k=4)+s(phyto,k=4)+s(salt,k=4)+s(sst,k=4)+s(temp_sd,k=4),
+  lm.CM <- gam(formula = CoMu~s(dist,k=3)+s(temp_sd,k=3)+s(phyto,k=3)+s(bathy,k=3)+s(salt,k=3)+s(sst,k=3),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
-  lm.GL <- gam(formula = GL~ s(bathy,k=4)+s(dist,k=4)+s(salt,k=4)+s(phyto,k=4)+s(temp_sd,k=4),
+  lm.GL <- gam(formula = GL~ s(bathy,k=3)+s(dist,k=3)+s(sst,k=3)+s(phyto,k=3)+s(temp_sd,k=3),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
@@ -309,19 +316,19 @@ for (z in unique(cv_base$zone)) {
   train <- cv_base %>% filter(zone != z)
   test <- cv_base %>% filter(zone == z)
   ## train a model for each species
-  lm.HP <- gam(formula = HPorp~ s(bathy,k=4)+s(sst, k=4)+s(salt, k=4),
+  lm.HP <- gam(formula = HPorp~s(bathy,k=3)+s(sst, k=3),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
-  lm.HS <- gam(formula = HSeal~ s(bathy,k=4)+s(phyto,k=4),
+  lm.HS <- gam(formula = HSeal~ s(bathy,k=3)+s(phyto,k=3),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
-  lm.CM <- gam(formula = CoMu~s(dist,k=4)+s(phyto,k=4)+s(salt,k=4)+s(sst,k=4)+s(temp_sd,k=4),
+  lm.CM <- gam(formula = CoMu~s(dist,k=3)+s(temp_sd,k=3)+s(phyto,k=3)+s(bathy,k=3)+s(salt,k=3)+s(sst,k=3),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
-  lm.GL <- gam(formula = GL~ s(bathy,k=4)+s(dist,k=4)+s(salt,k=4)+s(phyto,k=4)+s(temp_sd,k=4),
+  lm.GL <- gam(formula = GL~ s(bathy,k=3)+s(dist,k=3)+s(sst,k=3)+s(phyto,k=3)+s(temp_sd,k=3),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
