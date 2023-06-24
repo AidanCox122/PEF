@@ -237,7 +237,7 @@ cv_base <-
   interannual_mbm_grid %>% 
   dplyr::select(year, zone, Effort_sqkm, Species_code, bathy:salt, countInt) %>% 
   pivot_wider(names_from = 'Species_code', values_from = 'countInt')
-
+## Year ----
 # loop that filters out each year, trains each species model, and computes/stores validation metrics
 LYO_results <- data.frame()
 LYO_raw <- data.frame()
@@ -280,36 +280,22 @@ for (y in unique(cv_base$year)) {
       # Glaucous-winged gull
       GL.p = predict(lm.GL, newdata = test, type = "response", se = FALSE),
       GL.p = round(GL.p, digits = 0)) %>% 
-    # convert zero values to very small numbers to avoid infinite predition error
-    mutate_all(across(everything(), ~ if_else(
-      . == 0,
-      0.000001,
-      .)))
+    # # convert zero values to very small numbers to avoid infinite predition error
+    # mutate_all( ~ ifelse( . == 0, 0.000001, .)) %>% 
     # calculate prediction error for each species in each zone
     mutate(
       d.HP = (((HPorp - HP.p) / HPorp) * 100),
       d.HS = (((HSeal - HS.p) / HSeal) * 100),
       d.CM = (((CoMu - CM.p) / CoMu) * 100),
-      d.GL = (((GL - GL.p) / GL) * 100)
-    )
+      d.GL = (((GL - GL.p) / GL) * 100))
   
-  ## compute and store validation metrics
-  # prediction error and adj. r-squared
-  test$HS[test$HS == 0] <- 0.001 # prevent infinite prediction error
-  test$HP[test$HP == 0] <- 0.001 # prevent infinite prediction error
-  test$CM[test$CM == 0] <- 0.001 # prevent infinite prediction error
-  test$GL[test$GL == 0] <- 0.001 # prevent infinite prediction error
-  test <- test %>% mutate(
-    
-  )
   data <- data.frame(
     year = y,
-    species = rc("HP", "HS", "CM", "GL"),
+    species = c("HP", "HS", "CM", "GL"),
     R.squared = c(summary(lm.HP)$r.sq, summary(lm.HS)$r.sq, summary(lm.CM)$r.sq, summary(lm.GL)$r.sq),
     Dev.Expl = c(summary(lm.HP)$dev.ex, summary(lm.HS)$dev.ex, summary(lm.CM)$dev.ex, summary(lm.GL)$dev.ex)
   )
-  
-  LYO_raw <- rbind(LYO_raw, test[,c(1,2,13:20)])
+  LYO_raw <- rbind(LYO_raw, test.full[,c(1,2,13:24)])
   LYO_results <- rbind(LYO_results, data)
   print(y)
   rm(data, train, test, lm.HP, lm.HS, lm.CM, lm.GL)
@@ -318,43 +304,91 @@ for (y in unique(cv_base$year)) {
 # same process but for zones
 LZO_results <- data.frame()
 LZO_raw <- data.frame()
-for (z in unique(cv_base$Zone)) {
+for (z in unique(cv_base$zone)) {
   ## create train and test sets
-  train <- cv_base %>% filter(Zone != z)
-  test <- cv_base %>% filter(Zone == z)
+  train <- cv_base %>% filter(zone != z)
+  test <- cv_base %>% filter(zone == z)
   ## train a model for each species
-  lm.HP <- gam(HP ~ s(phyto, k=4) , data = train)
-  lm.HS <- gam(HS ~ s(bathy,k=3) + s(phyto,k=4) + s(topog,k=4), family = poisson, offset = log(effort), data = train)
-  lm.CM <- gam(CM ~ s(dist,k=3) + s(phyto,k=3) + s(temp_sd,k=4) + s(temp,k=4) + s(salt,k=4), family = poisson, offset = log(effort), data = train)
-  lm.GL <- gam(GL ~ s(bathy, k=3) + s(dist,k=3) + s(temp,k=4) + s(phyto,k=4), family = poisson, offset = log(effort), data = train)
+  lm.HP <- gam(formula = HPorp~ s(bathy,k=4)+s(sst, k=4)+s(salt, k=4),
+               family = poisson,
+               offset = log(Effort_sqkm),
+               data = train)
+  lm.HS <- gam(formula = HSeal~ s(bathy,k=4)+s(phyto,k=4),
+               family = poisson,
+               offset = log(Effort_sqkm),
+               data = train)
+  lm.CM <- gam(formula = CoMu~s(dist,k=4)+s(phyto,k=4)+s(salt,k=4)+s(sst,k=4)+s(temp_sd,k=4),
+               family = poisson,
+               offset = log(Effort_sqkm),
+               data = train)
+  lm.GL <- gam(formula = GL~ s(bathy,k=4)+s(dist,k=4)+s(salt,k=4)+s(phyto,k=4)+s(temp_sd,k=4),
+               family = poisson,
+               offset = log(Effort_sqkm),
+               data = train)
   ## apply these models to test data
-  test$HP.p <- predict(lm.HP, newdata = test, type = "response", se = FALSE)
-  test$HS.p <- predict(lm.HS, newdata = test, type = "response", se = FALSE)
-  test$CM.p <- predict(lm.CM, newdata = test, type = "response", se = FALSE)
-  test$GL.p <- predict(lm.GL, newdata = test, type = "response", se = FALSE)
-  ## compute and store validation metrics
-  # prediction error and adj. r-squared
-  test$HS[test$HS == 0] <- 0.001 # prevent infinite prediction error
-  test$HP[test$HP == 0] <- 0.001 # prevent infinite prediction error
-  test$CM[test$CM == 0] <- 0.001 # prevent infinite prediction error
-  test$GL[test$GL == 0] <- 0.001 # prevent infinite prediction error
-  test <- test %>% mutate(
-    d.HP = (((HP - HP.p) / HP) * 100),
-    d.HS = (((HS - HS.p) / HS) * 100),
-    d.CM = (((CM - CM.p) / CM) * 100),
-    d.GL = (((GL - GL.p) / GL) * 100)
-  )
+  test.full <- 
+    test %>% 
+    mutate(
+      # predict values for harbor porpoise
+      HP.p = predict(lm.HP, newdata = test, type = "response", se = FALSE),
+      # round non-integer values produced be predict() function
+      HP.p = round(HP.p, digits = 0),
+      # repeat for Harbor seal
+      HS.p = predict(lm.HS, newdata = test, type = "response", se = FALSE),
+      HS.p = round(HS.p, digits = 0),
+      # Common Murre
+      CM.p = predict(lm.CM, newdata = test, type = "response", se = FALSE),
+      CM.p = round(CM.p, digits = 0),
+      # Glaucous-winged gull
+      GL.p = predict(lm.GL, newdata = test, type = "response", se = FALSE),
+      GL.p = round(GL.p, digits = 0)) %>% 
+    # # convert zero values to very small numbers to avoid infinite predition error
+    # mutate_all( ~ ifelse( . == 0, 0.000001, .)) %>% 
+    # calculate prediction error for each species in each zone
+    mutate(
+      d.HP = (((HPorp - HP.p) / HPorp) * 100),
+      d.HS = (((HSeal - HS.p) / HSeal) * 100),
+      d.CM = (((CoMu - CM.p) / CoMu) * 100),
+      d.GL = (((GL - GL.p) / GL) * 100))
+  
   data <- data.frame(
-    Zone = z,
-    Year = rep(c(2017,2018,2019,2020,2021), times = 4),
-    species = rep(c("HP", "HS", "CM", "GL"), each = 5),
-    R.squared = rep(c(summary(lm.HP)$r.sq, summary(lm.HS)$r.sq, summary(lm.CM)$r.sq, summary(lm.GL)$r.sq), each = 5),
-    Dev.Expl = rep(c(summary(lm.HP)$dev.ex, summary(lm.HS)$dev.ex, summary(lm.CM)$dev.ex, summary(lm.GL)$dev.ex), each = 5)
+    zone = z,
+    species = c("HP", "HS", "CM", "GL"),
+    R.squared = c(summary(lm.HP)$r.sq, summary(lm.HS)$r.sq, summary(lm.CM)$r.sq, summary(lm.GL)$r.sq),
+    Dev.Expl = c(summary(lm.HP)$dev.ex, summary(lm.HS)$dev.ex, summary(lm.CM)$dev.ex, summary(lm.GL)$dev.ex)
   )
-  LZO_raw <- rbind(LZO_raw, test[,c(1,2,13:20)])
+  
+  LZO_raw <- rbind(LZO_raw, test.full[,c(1,2,13:24)])
   LZO_results <- rbind(LZO_results, data)
   print(z)
   rm(data, train, test, lm.HP, lm.HS, lm.CM, lm.GL)
 }
+
+# summarizing predition error
+# Leave-one-year out tests extrapolation through time
+LYO_raw %>%
+  group_by(year) %>% 
+  summarize(GL = median(d.GL, na.rm = T),
+            CM = median(d.CM,na.rm = T),
+            HS = median(d.HS,na.rm = T),
+            HP = median(d.HP,na.rm = T))%>%
+  pivot_longer(cols = c('GL', 'CM', 'HS', "HP"),
+               names_to = 'species',
+               values_to = 'predError') %>% 
+  group_by(species) %>% 
+  summarize(predErr_Time = median(predError, na.rm = T))
+
+# Leave-one-zone out tests extrapolation through time
+LZO_raw %>%
+  group_by(zone) %>% 
+  summarize(GL = median(d.GL, na.rm = T),
+            CM = median(d.CM,na.rm = T),
+            HS = median(d.HS,na.rm = T),
+            HP = median(d.HP,na.rm = T))%>%
+  pivot_longer(cols = c('GL', 'CM', 'HS', "HP"),
+               names_to = 'species',
+               values_to = 'predError') %>% 
+  group_by(species) %>% 
+  summarize(predErr_Time = median(predError, na.rm = T))
 
 
