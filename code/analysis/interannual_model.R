@@ -147,8 +147,7 @@ getWeightIANN(base = c('dist', 'temp_sd', 'phyto', 'bathy', 'salt'),
               test = c('sst'),
               species = 'CoMu',
               training = interannual_mbm_grid)
-# bathymetry is the best predictor 
-# BUT SST loses signif when bathy included so stoping at FS 5
+# sst is the best predictor 
 
 ### best model for CoMu ----
 CoMu_interann_mod <- 

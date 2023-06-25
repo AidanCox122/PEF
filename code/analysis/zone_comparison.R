@@ -141,4 +141,60 @@ ggplot(data = HPorp, aes(x = Zone, y = Density, color = Zone)) +
   theme(legend.position = "bottom")
 
 
+# year ANOVA --------------------------------------------------------------
+
+
+## glaucous-winged gull ----------------------------------------------------
+GL.kw <- 
+  GL.kw %>%
+  mutate(year = lubridate::year(Date)) %>% 
+  filter(year >= 2017)
+
+# this chunk will compare differences in species abundance between years
+print(kruskal.test(Density ~ year, data = GL.kw)) # there are highly significant differences between the zones
+# post-hoc testing
+pairwise.wilcox.test(GL.kw$Density, GL.kw$year,
+                     p.adjust.method = "bonferroni" # apply Bonferroni's correction
+)
+
+## common murre ------------------------------------------------------------
+
+CM.kw <- 
+  CM.kw %>% 
+  mutate(year = lubridate::year(Date)) %>% 
+  filter(year >= 2017)
+
+# this chunk will compare differences in species abundance between years
+print(kruskal.test(Density ~ year, data = CM.kw)) # there are highly significant differences between the zones
+# post-hoc testing
+# no significant difference between years
+
+
+## harbor seal -------------------------------------------------------------
+HSeal <- 
+  HSeal %>%
+  mutate(year = lubridate::year(Date)) %>% 
+  filter(year >= 2017)
+
+# this chunk will compare differences in species abundance between years
+print(kruskal.test(Density ~ year, data = HSeal)) # there are highly significant differences between the zones
+# post-hoc testing
+pairwise.wilcox.test(HSeal$Density, HSeal$year,
+                     p.adjust.method = "bonferroni" # apply Bonferroni's correction
+)
+
+
+# harbor porpoise ---------------------------------------------------------
+HPorp <- 
+  HPorp %>%
+  mutate(year = lubridate::year(Date)) %>% 
+  filter(year >= 2017)
+
+# this chunk will compare differences in species abundance between years
+print(kruskal.test(Density ~ year, data = HPorp)) # there are highly significant differences between the zones
+# post-hoc testing
+pairwise.wilcox.test(HPorp$Density, HPorp$year,
+                     p.adjust.method = "bonferroni" # apply Bonferroni's correction
+)
+
 
