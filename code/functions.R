@@ -101,7 +101,7 @@ getWeightIANN <-
 
 # logistic regression weights (marine mammals) ------------------------------------------
 
-get_weight <- 
+get_logit <- 
   # function will accept inputs where base is a vector of established predictors,
   # and test will be a vector of predictors to include in the next iteration of forward selection
   function(base = NULL, test, species = NULL, training = NULL) {
@@ -126,7 +126,7 @@ get_weight <-
       # if base is null, find AIC for each test model
       for(x in names(models)) {
         form <- 
-          paste('countInt~',
+          paste('PresAbs~',
                 x,
                 sep = '')
         
@@ -139,7 +139,7 @@ get_weight <-
           AIC(m1)}
       # if base is null, compare to a model with only a random effect of individual
       m2 <- 
-        glm(formula = countInt ~ 1,
+        glm(formula = PresAbs ~ 1,
             family = 'binomial',
             data = data)
       # store the results in the models list
@@ -149,7 +149,7 @@ get_weight <-
       # otherwise, if base is not null, build a new formula
       # find AIC for each test model
       for(x in names(models)) {
-        paste('PA~', paste0(base,
+        form <- paste('PresAbs~', paste0(base,
                             collapse = '',
                             sep = '+'),
               x,
@@ -164,7 +164,7 @@ get_weight <-
           AIC(m1)}
       
       form2 <- 
-        paste('countInt~', paste(base,collapse = '+'))
+        paste('PresAbs~', paste(base,collapse = '+'))
       m2 <- 
         glm(formula = as.formula(form2),
             family = 'binomial',

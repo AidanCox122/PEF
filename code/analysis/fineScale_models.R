@@ -80,6 +80,49 @@ daily_mbm_grid %>%
 # Random effects account for the variability that arises due to unobserved or
 # unmeasured factors associated with the grouping levels.
 
+
+# Harbor seal (logit) -------------------------------------------------------------
+
+# forward selection 1
+get_logit(test = c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+          species = 'HSeal',
+          training = daily_mbm_grid)
+# bathymetry is the best predictor
+
+# forward selection 2
+get_logit(base = c('bathy'),
+          test = c('topog', 'dist', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+          species = 'HSeal',
+          training = daily_mbm_grid)
+# distance from shore is the best predictor
+
+# forward selection 3
+get_logit(base = c('bathy', 'dist'),
+          test = c('phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+          species = 'HSeal',
+          training = daily_mbm_grid)
+# delta tide height is the best predictor
+
+# forward selection 4
+get_logit(base = c('bathy', 'dist', 'dth'),
+          test = c('phyto', 'sst', 'temp_sd', 'salt'),
+          species = 'HSeal',
+          training = daily_mbm_grid)
+# null model is best
+
+### best model for HSeals ----
+HSeal_daily_mod <- 
+  glm(formula = PresAbs~ bathy+dist+dth,
+      family = 'binomial',
+      data = (daily_mbm_grid %>% filter(Species_code == 'HSeal')))
+summary(HSeal_daily_mod) 
+# 0.238 deviance explained
+
+
+## HPorp (logit) -----------------------------------------------------------
+
+
+
 ## glaucous-winged gull ----------------------------------------------------
 
 
