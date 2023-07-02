@@ -4,6 +4,7 @@
 library(tidyverse) 
 library(PerformanceAnalytics)
 library(mgcv)
+library(lme4)
 
 source('code/functions.R')
 
@@ -83,49 +84,178 @@ daily_mbm_grid %>%
 
 # Harbor seal (logit) -------------------------------------------------------------
 
-# forward selection 1
-get_logit(test = c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-          species = 'HSeal',
-          training = daily_mbm_grid)
-# bathymetry is the best predictor
+# FS:1
+get_logit(
+  test = c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+  species = 'HSeal',
+  training = daily_mbm_grid)
+# bathy is the best model
 
-# forward selection 2
-get_logit(base = c('bathy'),
-          test = c('topog', 'dist', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-          species = 'HSeal',
-          training = daily_mbm_grid)
-# distance from shore is the best predictor
+# FS:2
+get_logit(
+  base = c('bathy'),
+  test = c('topog', 'dist', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+  species = 'HSeal',
+  training = daily_mbm_grid)
+# distance from shore is best model
 
 # forward selection 3
-get_logit(base = c('bathy', 'dist'),
-          test = c('phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-          species = 'HSeal',
-          training = daily_mbm_grid)
-# delta tide height is the best predictor
+get_logit(
+  base = c('bathy', 'dist'),
+  test = c('phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+  species = 'HSeal',
+  training = daily_mbm_grid)
+# dth is next best
 
-# forward selection 4
-get_logit(base = c('bathy', 'dist', 'dth'),
-          test = c('phyto', 'sst', 'temp_sd', 'salt'),
-          species = 'HSeal',
-          training = daily_mbm_grid)
-# null model is best
+# forward selection 3
+get_logit(
+  base = c('bathy', 'dist', 'dth'),
+  test = c('phyto', 'sst', 'temp_sd', 'salt'),
+  species = 'HSeal',
+  training = daily_mbm_grid)
+# dth is next best
 
-### best model for HSeals ----
+### best model for HSeal ----
 HSeal_daily_mod <- 
-  glm(formula = PresAbs~ bathy+dist+dth,
-      family = 'binomial',
-      data = (daily_mbm_grid %>% filter(Species_code == 'HSeal')))
-summary(HSeal_daily_mod) 
-# 0.238 deviance explained
+  glm(PresAbs ~ bathy + dist + dth,
+      data = (daily_mbm_grid %>% filter(Species_code == 'HSeal')),
+      family = 'binomial')
 
+summary(HSeal_daily_mod)
+# 0.2380584 deviance explained
 
 ## HPorp (logit) -----------------------------------------------------------
 
+# FS:1
+get_logit(
+  test = c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+  species = 'HPorp',
+  training = daily_mbm_grid)
+# distance from shore is the best model
+
+# FS:2
+get_logit(
+  base = c('dist'),
+  test = c('bathy', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+  species = 'HPorp',
+  training = daily_mbm_grid)
+# temp_sd from shore is the best model // BUT NOT SIGNIF. 
+
+# FS:3
+get_logit(
+  base = c('dist', 'temp_sd'),
+  test = c('bathy', 'salt', 'dth'),
+  species = 'HPorp',
+  training = daily_mbm_grid)
+# null the best model
+
+### best model for HPorp ----
+HPorp_daily_mod <- 
+  glm(PresAbs ~ dist,
+      data = (daily_mbm_grid %>% filter(Species_code == 'HSeal')),
+      family = 'binomial')
+
+summary(HPorp_daily_mod)
+# 0.06181271 deviance explained
 
 
-## glaucous-winged gull ----------------------------------------------------
+## glaucous-winged gull (gam) ----------------------------------------------------
 
+# forward selection 1
+get_gam(
+  test = c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+  species = 'GL',
+  training = daily_mbm_grid)
+# bathymetry is the best model
 
-# testing random effect of year, and zone
+# forward selection 2
+get_gam(
+  base = c('bathy'),
+  test = c('topog', 'dist', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+  species = 'GL',
+  training = daily_mbm_grid)
+# distance from shore is the best model
 
+# forward selection 3
+get_gam(
+  base = c('bathy', 'dist'),
+  test = c('phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+  species = 'GL',
+  training = daily_mbm_grid)
+# sst is the best model
+
+# forward selection 4
+get_gam(
+  base = c('bathy', 'dist', 'sst'),
+  test = c('salt', 'dth'),
+  species = 'GL',
+  training = daily_mbm_grid)
+# delta-tide height is the best model // only nearly signif
+
+# forward selection 5
+get_gam(
+  base = c('bathy', 'dist', 'sst', 'dth'),
+  test = c('salt'),
+  species = 'GL',
+  training = daily_mbm_grid)
+# null is the best model
+
+### best model for GL ----
+GL_daily_mod <- 
+  gam(Density ~ s(bathy,k=3)+s(dist, k=3)+s(sst,k=3),
+      data = (daily_mbm_grid %>% filter(Species_code == 'GL')),
+      family = nb)
+
+summary(GL_daily_mod)
+#  31% deviance explained
+
+## common murre (gam) ----------------------------------------------------
+
+# forward selection 1
+get_gam(
+  test = c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+  species = 'CoMu',
+  training = daily_mbm_grid)
+# distance from shore is the best model
+
+# forward selection 2
+get_gam(
+  base = c('dist'),
+  test = c('bathy', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+  species = 'CoMu',
+  training = daily_mbm_grid)
+# sst is the best model
+
+# forward selection 3
+get_gam(
+  base = c('dist', 'sst'),
+  test = c('bathy', 'salt', 'dth'),
+  species = 'CoMu',
+  training = daily_mbm_grid)
+# salinity is the best model // BEYOND THIS POINT VARIABLES NOT SIGNIF
+
+# forward selection 4
+get_gam(
+  base = c('dist', 'sst', 'salt'),
+  test = c('bathy', 'dth'),
+  species = 'CoMu',
+  training = daily_mbm_grid)
+# delta tide height is the best model
+
+# forward selection 5
+get_gam(
+  base = c('dist', 'sst', 'salt', 'dth'),
+  test = c('bathy'),
+  species = 'CoMu',
+  training = daily_mbm_grid)
+# bathymetry is the best model
+
+### best model for CoMu ----
+CoMu_daily_mod <- 
+  gam(Density ~ s(dist,k=3)+s(sst, k=3)+s(salt,k=3)+s(dth,k=3),
+      data = (daily_mbm_grid %>% filter(Species_code == 'GL')),
+      family = nb)
+
+summary(CoMu_daily_mod)
+#  25.7% deviance explained
 
