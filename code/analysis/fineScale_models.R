@@ -67,6 +67,12 @@ daily_mbm_grid <-
       dplyr::select(Date, cruise.gen)),
     by = 'Date')
 
+interspeciesComp <- 
+  daily_mbm_grid %>% 
+  dplyr::select(Date:dth, Species_code, Density) %>% 
+  pivot_wider(names_from = Species_code,
+              values_from = Density) %>% 
+  mutate(Species_code = 'All')
 
 # model construction ------------------------------------------------------
 
@@ -115,6 +121,22 @@ get_logit(
   training = daily_mbm_grid)
 # dth is next best
 
+### interspecies effects HSeal ----
+
+get_logit(
+  base = c('bathy','dist', 'dth'),
+  test = c('CoMu', 'HPorp', 'GL'),
+  species = 'All',
+  training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
+# HSPorp improves model
+
+get_logit(
+  base = c('bathy','dist', 'dth','HPorp'),
+  test = c('CoMu', 'GL'),
+  species = 'All',
+  training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
+# null is best
+
 ### best model for HSeal ----
 HSeal_daily_mod <- 
   glm(PresAbs ~ bathy + dist + dth,
@@ -123,6 +145,16 @@ HSeal_daily_mod <-
 
 summary(HSeal_daily_mod)
 # 0.2380584 deviance explained
+
+# w. interspecies
+HSeal_daily_mod_interspecies <- 
+  glm(PresAbs ~ bathy + dist + dth + HPorp,
+      data = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))),
+      family = 'binomial')
+
+summary(HSeal_daily_mod_interspecies)
+# 0.248 dev. expl.
+# HPorp not a signif. predictor
 
 ## HPorp (logit) -----------------------------------------------------------
 
@@ -149,15 +181,39 @@ get_logit(
   training = daily_mbm_grid)
 # null the best model
 
+### interspecies effects HPorp ----
+
+get_logit(
+  base = c('dist'),
+  test = c('CoMu', 'HSeal', 'GL'),
+  species = 'All',
+  training = (interspeciesComp %>% mutate(PresAbs = if_else(HPorp > 0, 1, 0))))
+# HSeal improves model
+
+get_logit(
+  base = c('dist', 'HSeal'),
+  test = c('CoMu', 'GL'),
+  species = 'All',
+  training = (interspeciesComp %>% mutate(PresAbs = if_else(HPorp > 0, 1, 0))))
+# null is best
+
 ### best model for HPorp ----
 HPorp_daily_mod <- 
   glm(PresAbs ~ dist,
-      data = (daily_mbm_grid %>% filter(Species_code == 'HSeal')),
+      data = (daily_mbm_grid %>% filter(Species_code == 'HPorp')),
       family = 'binomial')
 
 summary(HPorp_daily_mod)
-# 0.06181271 deviance explained
+# 0.042 deviance explained
 
+# w. interspecies
+HPorp_daily_mod_interspecies <- 
+  glm(PresAbs ~ dist + HSeal,
+      data = (interspeciesComp %>% mutate(PresAbs = if_else(HPorp > 0, 1, 0))),
+      family = 'binomial')
+
+summary(HPorp_daily_mod_interspecies) # HSeal nearly signif.
+# 0.047
 
 ## glaucous-winged gull (gam) ----------------------------------------------------
 
@@ -200,6 +256,23 @@ get_gam(
   training = daily_mbm_grid)
 # null is the best model
 
+### interspecies effects GL ----
+
+get_gam(
+  base = c('bathy', 'dist', 'sst'),
+  test = c('CoMu', 'HSeal', 'HPorp'),
+  species = 'All',
+  training = (interspeciesComp %>% rename('Density' = GL)))
+# CoMu improves model
+
+get_gam(
+  base = c('bathy', 'dist', 'sst', 'CoMu'),
+  test = c('HSeal', 'HPorp'),
+  species = 'All',
+  training = (interspeciesComp %>% rename('Density' = GL)))
+# null is best 
+
+
 ### best model for GL ----
 GL_daily_mod <- 
   gam(Density ~ s(bathy,k=3)+s(dist, k=3)+s(sst,k=3),
@@ -208,6 +281,15 @@ GL_daily_mod <-
 
 summary(GL_daily_mod)
 #  31% deviance explained
+
+# w. interspecies 
+GL_daily_mod_interspecies <- 
+  gam(GL ~ s(bathy,k=3)+s(dist, k=3)+s(sst,k=3)+s(CoMu,k=3),
+      data = interspeciesComp,
+      family = nb)
+
+summary(GL_daily_mod_interspecies)
+#  37% deviance explained
 
 ## common murre (gam) ----------------------------------------------------
 
@@ -250,6 +332,28 @@ get_gam(
   training = daily_mbm_grid)
 # bathymetry is the best model
 
+### interspecies effects CoMu ----
+get_gam(
+  base = c('dist', 'sst', 'salt', 'dth'),
+  test = c('GL', 'HSeal', 'HPorp'),
+  species = 'All',
+  training = (interspeciesComp %>% rename('Density' = CoMu)))
+#GL density improves model
+
+get_gam(
+  base = c('dist', 'sst', 'salt', 'dth', 'GL'),
+  test = c('HSeal', 'HPorp'),
+  species = 'All',
+  training = (interspeciesComp %>% rename('Density' = CoMu)))
+# HPorp density improves model
+
+get_gam(
+  base = c('dist', 'sst', 'salt', 'dth', 'GL', 'HPorp'),
+  test = c('HSeal'),
+  species = 'All',
+  training = (interspeciesComp %>% rename('Density' = CoMu)))
+# null is best
+
 ### best model for CoMu ----
 CoMu_daily_mod <- 
   gam(Density ~ s(dist,k=3)+s(sst, k=3)+s(salt,k=3)+s(dth,k=3),
@@ -258,4 +362,18 @@ CoMu_daily_mod <-
 
 summary(CoMu_daily_mod)
 #  25.7% deviance explained
+
+# W. interspecies
+CoMu_daily_mod_interspec <- 
+  gam(CoMu ~ s(dist,k=3)+s(sst, k=3)+s(salt,k=3)+s(dth,k=3)+s(GL,k=3)+s(HPorp,k=3),
+      data = interspeciesComp,
+      family = nb)
+
+summary(CoMu_daily_mod_interspec)
+# 57% deviance explained
+
+
+# monte-carlo validation --------------------------------------------------
+
+
 
