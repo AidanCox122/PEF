@@ -464,19 +464,20 @@ for (i in 1:500) {
   print("Finished Step 2")
   # step 3: assess the accuracy of the models
   # abundance models
-  GL.mi <- min(((GL_test$count - GL_test$predicted)/GL_test$count) * 100, na.rm = TRUE)
-  GL.me <- median(((GL_test$count - GL_test$predicted)/GL_test$count) * 100, na.rm = TRUE)
-  GL.ma <- max(((GL_test$count - GL_test$predicted)/GL_test$count) * 100, na.rm = TRUE)
+  ## calculate summary statistics
+  GL.mi <- min(((GL_test$Density - GL_test$predicted)/GL_test$Density) * 100, na.rm = TRUE)
+  GL.me <- median(((GL_test$Density - GL_test$predicted)/GL_test$Density) * 100, na.rm = TRUE)
+  GL.ma <- max(((GL_test$Density - GL_test$predicted)/GL_test$Density) * 100, na.rm = TRUE)
   GL.rsq <- summary(nb.GL)$r.sq
   GL.dex <- summary(nb.GL)$dev.expl
   
-  CM.mi <- min(((CM_test$count - CM_test$predicted)/CM_test$count) * 100, na.rm = TRUE)
-  CM.me <- median(((CM_test$count - CM_test$predicted)/CM_test$count) * 100, na.rm = TRUE)
-  CM.ma <- max(((CM_test$count - CM_test$predicted)/CM_test$count) * 100, na.rm = TRUE)
+  CM.mi <- min(((CM_test$Density - CM_test$predicted)/CM_test$Density) * 100, na.rm = TRUE)
+  CM.me <- median(((CM_test$Density - CM_test$predicted)/CM_test$Density) * 100, na.rm = TRUE)
+  CM.ma <- max(((CM_test$Density - CM_test$predicted)/CM_test$Density) * 100, na.rm = TRUE)
   CM.rsq <- summary(nb.CM)$r.sq
   CM.dex <- summary(nb.CM)$dev.expl
   
-  data.eval <- data.frame(
+  data.eval <- tibble(
     Trial = c(i,i), 
     Species_code = c("GL", "CoMu"), 
     min.pe = c(GL.mi, CM.mi), 
@@ -484,8 +485,7 @@ for (i in 1:500) {
     max.pe = c(GL.ma, CM.ma), 
     r.squ = c(GL.rsq, CM.rsq), 
     dev.ex = c(GL.dex, CM.dex),
-    test = c(nrow(GL_test), nrow(CM_test))
-  )
+    test = c(nrow(GL_test), nrow(CM_test)))
   
   coef <- nb.GL$coefficients
   data.cov <- stack(coef)
@@ -503,12 +503,15 @@ for (i in 1:500) {
   print("Finished Step 3a")
   
   # presence absence models
-  HS.t <- ci.auc(HSeal_test$PA, HSeal_test$predicted)
-  HP.t <- ci.auc(HPorp_test$PA, HPorp_test$predicted)
+  # calculate area under receiver opperator curve
+  HS.t <- ci.auc(HSeal_test$PresAbs, HSeal_test$predicted)
+  HP.t <- ci.auc(HPorp_test$PresAbs, HPorp_test$predicted)
   
+  # calculate log liklihood
   HS.rsq <- 1-logLik(glm.HS)/logLik(glm0)
   HP.rsq <- 1-logLik(glm.HP)/logLik(glm0.0)
   
+  # calculate percentage of deviance explained
   HS.dex <- 1 - (deviance(glm.HS)/deviance(glm0))
   HP.dex <- 1 - (summary(glm.HP)$deviance/ summary(glm.HP)$null.deviance)
   
@@ -523,7 +526,7 @@ for (i in 1:500) {
     
   )
   
-  coef <- fixef(glm.HS)
+  coef <- coef(glm.HS)
   data.cov <- stack(coef)
   data.cov$iter <- i
   data.cov$Species_code <- "HS"
