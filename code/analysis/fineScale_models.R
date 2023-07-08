@@ -5,6 +5,7 @@ library(tidyverse)
 library(PerformanceAnalytics)
 library(mgcv)
 library(lme4)
+library(pROC)
 
 source('code/functions.R')
 
