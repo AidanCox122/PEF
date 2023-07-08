@@ -15,7 +15,9 @@ env_grid <-
 
 mbm_data <- 
   read_csv('data/clean/mbm_master.csv') %>% 
-  rename(zone = Zone)
+  rename(zone = Zone) %>%  
+  # change zone to a factor
+  mutate(zone = factor(zone))
 
 dth <- 
   read_csv('data/clean/dth.csv')
