@@ -46,8 +46,6 @@ daily_mbm_grid <-
   mutate(zone = factor(zone)) %>% 
   # select variables for model
   dplyr::select(Date, zone, bathy:salt,dth) %>% 
-  # scale predictors
-  mutate_if(is.numeric, base::scale) %>% 
   # find average value in each zone on each cruise date
   group_by(Date, zone) %>% 
   # take the mean of environmental conditions in each zone on each cruise
@@ -60,6 +58,8 @@ daily_mbm_grid <-
     by = c('Date', 'zone')) %>%
   # lots of NAs from years prior to 2017
   filter(!is.na(bathy)) %>% # n = 672
+  # scale predictors
+  mutate_at(c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'), base::scale) %>%
   mutate(year = lubridate::year(Date),
          PresAbs = if_else(Density > 0,
                            1,
@@ -122,7 +122,7 @@ get_logit(
   test = c('phyto', 'sst', 'temp_sd', 'salt'),
   species = 'HSeal',
   training = daily_mbm_grid)
-# dth is next best
+# null is next best
 
 ### interspecies effects HSeal ----
 
@@ -131,7 +131,7 @@ get_logit(
   test = c('CoMu', 'HPorp', 'GL'),
   species = 'All',
   training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
-# HSPorp improves model
+# HPorp improves model
 
 get_logit(
   base = c('bathy','dist', 'dth','HPorp'),

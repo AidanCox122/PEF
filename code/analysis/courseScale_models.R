@@ -31,8 +31,6 @@ interannual_mbm_grid <-
   mutate(zone = factor(zone)) %>% 
   # select variables for model
   dplyr::select(Date, zone, bathy:salt) %>% 
-  # scale predictors
-  mutate_if(is.numeric, base::scale) %>% 
   # find average value in each zone on each cruise date
   group_by(Date, zone) %>% 
   summarize_if(is.numeric, mean, na.rm = T) %>%  # n = 1644
@@ -41,6 +39,8 @@ interannual_mbm_grid <-
   # lots of NAs from years prior to 2017
   filter(!is.na(bathy)) %>% # n = 672
   mutate(year = lubridate::year(Date)) %>% 
+  # scale predictors
+  mutate_at(c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt'), base::scale) %>%
   # calculate average conditions in each zone in each year
   group_by(year, zone, Species_code) %>% 
   summarize_if(is.numeric, mean, na.rm = T) %>% 
@@ -233,7 +233,7 @@ HPorp_interann_mod <-
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'HPorp')))
 summary(HPorp_interann_mod) # this not significant!
-# adj. r-squared: 0.152
+# adj. r-squared: 0.259
 
 # Leave-one-out Validation ------------------------------------------------
 # This chunk performs leave-one-year-out validation on course-scale habitat models:
