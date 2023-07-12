@@ -131,11 +131,11 @@ get_logit(
   test = c('CoMu', 'HPorp', 'GL'),
   species = 'All',
   training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
-# HPorp improves model
+# CoMu improves model
 
 get_logit(
-  base = c('bathy','dist', 'dth','HPorp'),
-  test = c('CoMu', 'GL'),
+  base = c('bathy','dist', 'dth','CoMu'),
+  test = c('HPorp', 'GL'),
   species = 'All',
   training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
 # null is best
@@ -151,12 +151,12 @@ summary(HSeal_daily_mod)
 
 # w. interspecies
 HSeal_daily_mod_interspecies <- 
-  glm(PresAbs ~ bathy + dist + dth + HPorp,
+  glm(PresAbs ~ bathy + dist + dth + CoMu,
       data = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))),
       family = 'binomial')
 
 summary(HSeal_daily_mod_interspecies)
-# 0.248 dev. expl.
+# 0.238 dev. expl. (232.8 null; 177.38 residual)
 # HPorp not a signif. predictor
 
 # steal the best formula
@@ -210,7 +210,7 @@ HPorp_daily_mod <-
       family = 'binomial')
 
 summary(HPorp_daily_mod)
-# 0.042 deviance explained
+# 0.0319 deviance explained (199.16 null; 192.79 residual)
 
 # w. interspecies
 HPorp_daily_mod_interspecies <- 
@@ -219,7 +219,7 @@ HPorp_daily_mod_interspecies <-
       family = 'binomial')
 
 summary(HPorp_daily_mod_interspecies) # HSeal nearly signif.
-# 0.047
+# 0.0484 dev. expl. (199.16 null; 189.52 residual)
 
 # steal the best formula
 form_HPorp <- as.formula(HPorp_daily_mod$formula)
@@ -279,6 +279,13 @@ get_gam(
   test = c('HSeal', 'HPorp'),
   species = 'All',
   training = (interspeciesComp %>% rename('Density' = GL)))
+# HPorp is best 
+
+get_gam(
+  base = c('bathy', 'dist', 'sst', 'CoMu', 'HPorp'),
+  test = c('HSeal'),
+  species = 'All',
+  training = (interspeciesComp %>% rename('Density' = GL)))
 # null is best 
 
 
@@ -289,7 +296,7 @@ GL_daily_mod <-
       family = nb)
 
 summary(GL_daily_mod)
-#  31% deviance explained
+#  30% deviance explained
 
 # w. interspecies 
 GL_daily_mod_interspecies <- 
@@ -298,7 +305,7 @@ GL_daily_mod_interspecies <-
       family = nb)
 
 summary(GL_daily_mod_interspecies)
-#  37% deviance explained
+#  40.8 deviance explained
 
 # steal the best formula
 form_GL <- as.formula(summary(GL_daily_mod)$formula)
@@ -318,49 +325,41 @@ get_gam(
   test = c('bathy', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
   species = 'CoMu',
   training = daily_mbm_grid)
-# sst is the best model
+# dth is the best model
 
 # forward selection 3
 get_gam(
-  base = c('dist', 'sst'),
-  test = c('bathy', 'salt', 'dth'),
+  base = c('dist', 'dth'),
+  test = c('bathy', 'phyto', 'sst', 'temp_sd', 'salt'),
   species = 'CoMu',
   training = daily_mbm_grid)
-# salinity is the best model // BEYOND THIS POINT VARIABLES NOT SIGNIF
+# bathymetry is the best model // BEYOND THIS POINT VARIABLES NOT SIGNIF
 
 # forward selection 4
 get_gam(
-  base = c('dist', 'sst', 'salt'),
-  test = c('bathy', 'dth'),
+  base = c('dist', 'dth', 'bathy'),
+  test = c('phyto', 'sst', 'temp_sd', 'salt'),
   species = 'CoMu',
   training = daily_mbm_grid)
-# delta tide height is the best model
-
-# forward selection 5
-get_gam(
-  base = c('dist', 'sst', 'salt', 'dth'),
-  test = c('bathy'),
-  species = 'CoMu',
-  training = daily_mbm_grid)
-# bathymetry is the best model
+# phytoplankton is the best model
 
 ### interspecies effects CoMu ----
 get_gam(
-  base = c('dist', 'sst', 'salt', 'dth'),
+  base = c('dist', 'dth', 'bathy', 'phyto'),
   test = c('GL', 'HSeal', 'HPorp'),
   species = 'All',
   training = (interspeciesComp %>% rename('Density' = CoMu)))
 #GL density improves model
 
 get_gam(
-  base = c('dist', 'sst', 'salt', 'dth', 'GL'),
+  base = c('dist', 'dth', 'bathy', 'phyto', 'GL'),
   test = c('HSeal', 'HPorp'),
   species = 'All',
   training = (interspeciesComp %>% rename('Density' = CoMu)))
 # HPorp density improves model
 
 get_gam(
-  base = c('dist', 'sst', 'salt', 'dth', 'GL', 'HPorp'),
+  base = c('dist', 'dth', 'bathy', 'phyto', 'GL', 'HPorp'),
   test = c('HSeal'),
   species = 'All',
   training = (interspeciesComp %>% rename('Density' = CoMu)))
@@ -368,24 +367,24 @@ get_gam(
 
 ### best model for CoMu ----
 CoMu_daily_mod <- 
-  gam(Density ~ s(dist,k=3)+s(sst, k=3)+s(salt,k=3)+s(dth,k=3),
+  gam(Density ~ s(dist,k=3)+s(dth, k=3)+s(bathy,k=3)+s(phyto,k=3),
       data = (daily_mbm_grid %>% filter(Species_code == 'CoMu')),
       family = nb)
 
 summary(CoMu_daily_mod)
-#  47.1% deviance explained
+#  43.3% deviance explained
 
 # steal the best formula
 form_CM <- as.formula(summary(CoMu_daily_mod)$formula)
 
 # W. interspecies
 CoMu_daily_mod_interspec <- 
-  gam(CoMu ~ s(dist,k=3)+s(sst, k=3)+s(salt,k=3)+s(dth,k=3)+s(GL,k=3)+s(HPorp,k=3),
+  gam(CoMu ~ s(dist,k=3)+s(dth, k=3)+s(bathy,k=3)+s(phyto,k=3)+s(GL,k=3)+s(HPorp,k=3),
       data = interspeciesComp,
       family = nb)
 
 summary(CoMu_daily_mod_interspec)
-# 57% deviance explained
+# 55% deviance explained
 
 
 # monte-carlo validation --------------------------------------------------
@@ -547,4 +546,7 @@ for (i in 1:500) {
   print(i)
 }
 
+t2 <- Sys.time()
+
+t2 - t1
 
