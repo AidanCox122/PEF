@@ -61,13 +61,13 @@ interannual_mbm_grid <-
 # train best model for:
 ## GL
 GL_interann_mod <- 
-  gam(formula = countInt~ s(bathy,k=3)+s(dist,k=3)+s(sst,k=3)+s(phyto,k=3)+s(temp_sd,k=3),
+  gam(formula = countInt~ s(bathy,k=3)+s(dist,k=3)+s(phyto,k=3)+s(temp_sd,k=3)+s(sst,k=3),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'GL')))
 ## CM
 CoMu_interann_mod <- 
-  gam(formula = countInt~s(dist,k=3)+s(temp_sd,k=3)+s(phyto,k=3)+s(bathy,k=3)+s(salt,k=3)+s(sst,k=3),
+  gam(formula = countInt~s(dist,k=3)+s(bathy,k=3)+s(salt,k=3)+s(phyto,k=3)+s(temp_sd,k=3)+s(sst,k=3),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu')))
@@ -81,7 +81,7 @@ HSeal_interann_mod <-
 
 ## HPorp
 HPorp_interann_mod <- 
-  gam(formula = countInt~ s(bathy,k=3)+s(sst, k=3),
+  gam(formula = countInt~ s(sst, k=3)+s(bathy,k=3),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'HPorp')))
@@ -132,7 +132,7 @@ GL_daily_mod <-
 
 ## CM:
 CoMu_daily_mod <- 
-  gam(Density ~ s(dist,k=3)+s(sst, k=3)+s(salt,k=3)+s(dth,k=3),
+  gam(Density ~ s(dist,k=3)+s(dth, k=3)+s(bathy,k=3)+s(phyto,k=3),
       data = (daily_mbm_grid %>% filter(Species_code == 'CoMu')),
       family = nb)
 
@@ -152,7 +152,7 @@ HPorp_daily_mod <-
 # Glaucous gull -----------------------------------------------------------
 
 ## coarse-scale ------------------------------------------------------------
-# bathy, dist, sst, phyto, temp_sd
+# bathy, dist, phyto, temp_sd, sst
 
 # bathymetry
 GLCoarse_bathy <- 
@@ -219,7 +219,7 @@ GlCoarse_sst <-
       Effort_sqkm = mean(Effort_sqkm),
       bathy = mean(bathy),
       dist = mean(dist),
-      sst = seq(-1,1, 0.025),
+      sst = seq(-0.75,0.75, 0.025),
       phyto = mean(phyto),
       temp_sd = mean(temp_sd)))
 
@@ -321,7 +321,7 @@ ggplot(GLFine2_bathy) +
   geom_line(aes(x = bathy, y = fit)) +
   geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL')), aes(x = bathy, y = Density, color = zone), alpha = 0.5) +
   xlab("Scaled Bathymetry") +
-  ylab("Glaucous Gull Count") +
+  ylab("Glaucous Gull Density") +
   theme_classic() # gulls are more common in regions of shallower water
 
 # distance from shore
@@ -346,7 +346,7 @@ ggplot(GLFine2_dist) +
   geom_line(aes(x = dist, y = fit)) +
   geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL')), aes(x = dist, y = Density, color = zone), alpha = 0.5) +
   xlab("Scaled Distance from Shore") +
-  ylab("Glaucous Gull Count") +
+  ylab("Glaucous Gull Density") +
   theme_classic() # gulls are more common farther from shore
 
 # sea-surface temperature
@@ -371,7 +371,7 @@ ggplot(GLFine2_sst) +
   geom_line(aes(x = sst, y = fit)) +
   geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL')), aes(x = sst, y = Density, color = zone), alpha = 0.5) +
   xlab("Scaled Sea-Surface Temperature") +
-  ylab("Glaucous Gull Count") +
+  ylab("Glaucous Gull Density") +
   theme_classic() # gulls are more common at lower sea-surface temperature values
 
 
@@ -379,9 +379,9 @@ ggplot(GLFine2_sst) +
 
 
 ## coarse-scale models -----------------------------------------------------
-# dist, temp_sd, phyto, bathy, salt, sst
+# dist, bathy, salt, phyto, temp_sd, sst
 
-# sea-surface temperature
+# distance from shore
 CMcoarse_dist <- 
   with(
     interannual_mbm_grid,
@@ -405,9 +405,302 @@ CMcoarse2_dist <- within(CMcoarse2_dist, {
 ggplot(CMcoarse2_dist) + 
   geom_ribbon(aes(x = dist, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
   geom_line(aes(x = dist, y = fit)) +
-  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL')), aes(x = dist, y = Density, color = zone), alpha = 0.5) +
-  xlab("Scaled Sea-Surface Temperature") +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu')), aes(x = dist, y = countInt, color = zone), alpha = 0.5) +
+  xlab("Scaled Distance from Shore") +
   ylab("Common Murre Count") +
   theme_classic() # gulls are more common at lower sea-surface temperature values
+
+# bathymetry
+CMcoarse_bathy <- 
+  with(
+    interannual_mbm_grid,
+    data.frame(
+      Effort_sqkm = mean(Effort_sqkm),
+      dist = mean(dist),
+      temp_sd = mean(temp_sd),
+      phyto = mean(phyto),
+      bathy = seq(-2,2, 0.025),
+      salt = mean(salt),
+      sst = mean(sst)))
+
+CMcoarse2_bathy <- 
+  cbind(CMcoarse_bathy,
+        predict(CoMu_interann_mod, newdata = CMcoarse_bathy, type = "response", se = TRUE))
+
+CMcoarse2_bathy <- within(CMcoarse2_bathy, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+ggplot(CMcoarse2_bathy) + 
+  geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = bathy, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu')), aes(x = bathy, y = countInt, color = zone), alpha = 0.5) +
+  xlab("Scaled Bathymetry") +
+  ylab("Common Murre Count") +
+  theme_classic() # gulls are more common at lower sea-surface temperature values
+
+# salinity
+CMcoarse_salt <- 
+  with(
+    interannual_mbm_grid,
+    data.frame(
+      Effort_sqkm = mean(Effort_sqkm),
+      dist = mean(dist),
+      temp_sd = mean(temp_sd),
+      phyto = mean(phyto),
+      bathy = mean(bathy),
+      salt = seq(-2,1, 0.025),
+      sst = mean(sst)))
+
+CMcoarse2_salt <- 
+  cbind(CMcoarse_salt,
+        predict(CoMu_interann_mod, newdata = CMcoarse_salt, type = "response", se = TRUE))
+
+CMcoarse2_salt <- within(CMcoarse2_salt, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+ggplot(CMcoarse2_salt) + 
+  geom_ribbon(aes(x = salt, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = salt, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu')), aes(x = salt, y = countInt, color = zone), alpha = 0.5) +
+  xlab("Scaled Salinity") +
+  ylab("Common Murre Count") +
+  theme_classic() # gulls are more common at lower sea-surface temperature values
+
+# phytoplankton
+CMcoarse_phyto <- 
+  with(
+    interannual_mbm_grid,
+    data.frame(
+      Effort_sqkm = mean(Effort_sqkm),
+      dist = mean(dist),
+      temp_sd = mean(temp_sd),
+      phyto = seq(-1,1, 0.025),
+      bathy = mean(bathy),
+      salt = mean(salt),
+      sst = mean(sst)))
+
+CMcoarse2_phyto <- 
+  cbind(CMcoarse_phyto,
+        predict(CoMu_interann_mod, newdata = CMcoarse_phyto, type = "response", se = TRUE))
+
+CMcoarse2_phyto <- within(CMcoarse2_phyto, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+ggplot(CMcoarse2_phyto) + 
+  geom_ribbon(aes(x = phyto, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = phyto, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu')), aes(x = phyto, y = countInt, color = zone), alpha = 0.5) +
+  xlab("Scaled Phytoplankton") +
+  ylab("Common Murre Count") +
+  theme_classic() # gulls are more common at lower sea-surface temperature values
+
+# sea-surface temperature standard deviaiton
+CMcoarse_tempsd <- 
+  with(
+    interannual_mbm_grid,
+    data.frame(
+      Effort_sqkm = mean(Effort_sqkm),
+      dist = mean(dist),
+      temp_sd = seq(-1,1, 0.025),
+      phyto = mean(phyto),
+      bathy = mean(bathy),
+      salt = mean(salt),
+      sst = mean(sst)))
+
+CMcoarse2_tempsd <- 
+  cbind(CMcoarse_tempsd,
+        predict(CoMu_interann_mod, newdata = CMcoarse_tempsd, type = "response", se = TRUE))
+
+CMcoarse2_tempsd <- within(CMcoarse2_tempsd, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+ggplot(CMcoarse2_tempsd) + 
+  geom_ribbon(aes(x = temp_sd, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = temp_sd, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu')), aes(x = temp_sd, y = countInt, color = zone), alpha = 0.5) +
+  xlab("Scaled SST Standard Deviation") +
+  ylab("Common Murre Count") +
+  theme_classic() # gulls are more common at lower sea-surface temperature values
+
+# sea-surface temperature 
+CMcoarse_sst <- 
+  with(
+    interannual_mbm_grid,
+    data.frame(
+      Effort_sqkm = mean(Effort_sqkm),
+      dist = mean(dist),
+      temp_sd = mean(temp_sd),
+      phyto = mean(phyto),
+      bathy = mean(bathy),
+      salt = mean(salt),
+      sst = seq(-0.75,0.75, 0.025)))
+
+CMcoarse2_sst <- 
+  cbind(CMcoarse_sst,
+        predict(CoMu_interann_mod, newdata = CMcoarse_sst, type = "response", se = TRUE))
+
+CMcoarse2_sst <- within(CMcoarse2_sst, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+ggplot(CMcoarse2_sst) + 
+  geom_ribbon(aes(x = sst, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = sst, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu')), aes(x = sst, y = countInt, color = zone), alpha = 0.5) +
+  xlab("Scaled Sea Surface Temperature") +
+  ylab("Common Murre Count") +
+  theme_classic() # gulls are more common at lower sea-surface temperature values
+
+
+## fine-scale models -----------------------------------------------------
+# dist, dth, bathy, phyto
+
+# distance from shore
+CMFine_dist <- 
+  with(
+    daily_mbm_grid,
+    data.frame(
+      dist = seq(-1,2.5, 0.025),
+      dth = mean(dth),
+      bathy = mean(bathy),
+      phyto = mean(phyto)))
+
+CMFine2_dist <- 
+  cbind(CMFine_dist,
+        predict(CoMu_daily_mod, newdata = CMFine_dist, type = "response", se = TRUE))
+
+CMFine2_dist <- within(CMFine2_dist, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+ggplot(CMFine2_dist) + 
+  geom_ribbon(aes(x = dist, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = dist, y = fit)) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu')), aes(x = dist, y = Density, color = zone), alpha = 0.5) +
+  xlab("Scaled Distance from Shore") +
+  ylab("Common Murre Density") +
+  theme_classic() # murres are more common farther from shore
+
+# delta-tide height
+CMFine_dth <- 
+  with(
+    daily_mbm_grid,
+    data.frame(
+      dist = mean(dist),
+      dth = seq(-3,2, 0.025),
+      bathy = mean(bathy),
+      phyto = mean(phyto)))
+
+CMFine2_dth <- 
+  cbind(CMFine_dth,
+        predict(CoMu_daily_mod, newdata = CMFine_dth, type = "response", se = TRUE))
+
+CMFine2_dth <- within(CMFine2_dth, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+ggplot(CMFine2_dth) + 
+  geom_ribbon(aes(x = dth, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = dth, y = fit)) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu')), aes(x = dth, y = Density, color = zone), alpha = 0.5) +
+  xlab("Scaled Delta Tide Height") +
+  ylab("Common Murre Density") +
+  theme_classic() # murres are more common at intermediate tides
+
+# bathymetry
+CMFine_bathy <- 
+  with(
+    daily_mbm_grid,
+    data.frame(
+      dist = mean(dist),
+      dth = mean(dth),
+      bathy = seq(-2,2, 0.025),
+      phyto = mean(phyto)))
+
+CMFine2_bathy <- 
+  cbind(CMFine_bathy,
+        predict(CoMu_daily_mod, newdata = CMFine_bathy, type = "response", se = TRUE))
+
+CMFine2_bathy <- within(CMFine2_bathy, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+ggplot(CMFine2_bathy) + 
+  geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = bathy, y = fit)) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu')), aes(x = bathy, y = Density, color = zone), alpha = 0.5) +
+  xlab("Scaled Bathymetry") +
+  ylab("Common Murre Density") +
+  theme_classic() # murres are more common in deeper water
+
+# phytoplankton
+CMFine_phyto <- 
+  with(
+    daily_mbm_grid,
+    data.frame(
+      dist = mean(dist),
+      dth = mean(dth),
+      bathy = mean(bathy),
+      phyto = seq(-2,4, 0.025)))
+
+CMFine2_phyto <- 
+  cbind(CMFine_phyto,
+        predict(CoMu_daily_mod, newdata = CMFine_phyto, type = "response", se = TRUE))
+
+CMFine2_phyto <- within(CMFine2_phyto, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+ggplot(CMFine2_phyto) + 
+  geom_ribbon(aes(x = phyto, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = phyto, y = fit)) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu')), aes(x = phyto, y = Density, color = zone), alpha = 0.5) +
+  xlab("Scaled Phytoplankton Concentration") +
+  ylab("Common Murre Density") +
+  theme_classic() # murres are more common in more productive waters
+
+
+# Harbor Seals ------------------------------------------------------------
+
+
+## coarse-scale models -----------------------------------------------------
+
+# bathy, phyto
+# bathymetry
+
+HScoarse_bathy <- 
+  with(
+    interannual_mbm_grid,
+    data.frame(
+      Effort_sqkm = mean(Effort_sqkm),
+      dist = mean(dist),
+      temp_sd = mean(temp_sd),
+      phyto = mean(phyto),
+      bathy = seq(-2,2, 0.025),
+      salt = mean(salt),
+      sst = mean(sst)))
+
+CMcoarse2_bathy <- 
+  cbind(CMcoarse_bathy,
+        predict(CoMu_interann_mod, newdata = CMcoarse_bathy, type = "response", se = TRUE))
+
+CMcoarse2_bathy <- within(CMcoarse2_bathy, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+ggplot(CMcoarse2_bathy) + 
+  geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = bathy, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu')), aes(x = bathy, y = countInt, color = zone), alpha = 0.5) +
+  xlab("Scaled Bathymetry") +
+  ylab("Common Murre Count") +
+  theme_classic() # gulls are more common at lower sea-surface temperature values
+
+
+
 
 
