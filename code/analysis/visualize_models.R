@@ -677,28 +677,81 @@ HScoarse_bathy <-
     interannual_mbm_grid,
     data.frame(
       Effort_sqkm = mean(Effort_sqkm),
-      dist = mean(dist),
-      temp_sd = mean(temp_sd),
-      phyto = mean(phyto),
       bathy = seq(-2,2, 0.025),
-      salt = mean(salt),
-      sst = mean(sst)))
+      phyto = mean(phyto)))
 
-CMcoarse2_bathy <- 
-  cbind(CMcoarse_bathy,
-        predict(CoMu_interann_mod, newdata = CMcoarse_bathy, type = "response", se = TRUE))
+HScoarse2_bathy <- 
+  cbind(HScoarse_bathy,
+        predict(HSeal_interann_mod, newdata = HScoarse_bathy, type = "response", se = TRUE))
 
-CMcoarse2_bathy <- within(CMcoarse2_bathy, {
+HScoarse2_bathy <- within(HScoarse2_bathy, {
   LL <- fit - (1.96 * se.fit)
   UL <- fit + (1.96 * se.fit)})
 
-ggplot(CMcoarse2_bathy) + 
+ggplot(HScoarse2_bathy) + 
   geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
   geom_line(aes(x = bathy, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu')), aes(x = bathy, y = countInt, color = zone), alpha = 0.5) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'HSeal')), aes(x = bathy, y = countInt, color = zone), alpha = 0.5) +
   xlab("Scaled Bathymetry") +
-  ylab("Common Murre Count") +
-  theme_classic() # gulls are more common at lower sea-surface temperature values
+  ylab("Harbor Seal Count") +
+  theme_classic() # seals are more common in shallow water up to a threshold
+
+# phytoplankton
+
+HScoarse_phyto <- 
+  with(
+    interannual_mbm_grid,
+    data.frame(
+      Effort_sqkm = mean(Effort_sqkm),
+      bathy = mean(bathy),
+      phyto = seq(-1,1, 0.025)))
+
+HScoarse2_phyto <- 
+  cbind(HScoarse_phyto,
+        predict(HSeal_interann_mod, newdata = HScoarse_phyto, type = "response", se = TRUE))
+
+HScoarse2_phyto <- within(HScoarse2_phyto, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+ggplot(HScoarse2_phyto) + 
+  geom_ribbon(aes(x = phyto, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = phyto, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'HSeal')), aes(x = phyto, y = countInt, color = zone), alpha = 0.5) +
+  xlab("Scaled Phytoplankton Concentration") +
+  ylab("Harbor Seal Count") +
+  theme_classic() # seals are more common in intermediate phytoplankton concentrations
+
+
+## fine-scale models -------------------------------------------------------
+
+# bathy, dist, dth
+
+# phytoplankton
+HSFine_bathy <- 
+  with(
+    daily_mbm_grid,
+    data.frame(
+      dist = mean(dist),
+      dth = mean(dth),
+      bathy = seq(-2,2, 0.025)))
+
+HSFine2_bathy <- 
+  cbind(HSFine_bathy,
+        predict(HSeal_daily_mod, newdata = HSFine_bathy, type = "response", se = TRUE))
+
+HSFine2_bathy <- within(HSFine2_bathy, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+ggplot(HSFine2_bathy) + 
+  geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = bathy, y = fit)) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal')), aes(x = bathy, y = Density, color = zone), alpha = 0.5) +
+  xlab("Scaled Bathymetry") +
+  ylab("Harbor Seal Density") +
+  theme_classic()
+
 
 
 
