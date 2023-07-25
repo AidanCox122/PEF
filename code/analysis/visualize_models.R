@@ -123,6 +123,13 @@ daily_mbm_grid <-
        dplyr::select(Date, cruise.gen)),
     by = 'Date')
 
+# remove attributes attached to each variable by scale function
+daily_mbm_grid <-
+  unclass(lapply(daily_mbm_grid, function(x) { attributes(x) <- NULL; x })) %>%
+  # convert back to a tibble
+  data.frame() %>% tibble()
+
+
 # train best fine-scale models for:
 ## GL:
 GL_daily_mod <- 
@@ -727,7 +734,7 @@ ggplot(HScoarse2_phyto) +
 
 # bathy, dist, dth
 
-# phytoplankton
+# bathymetry
 HSFine_bathy <- 
   with(
     daily_mbm_grid,
@@ -747,12 +754,69 @@ HSFine2_bathy <- within(HSFine2_bathy, {
 ggplot(HSFine2_bathy) + 
   geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
   geom_line(aes(x = bathy, y = fit)) +
-  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal')), aes(x = bathy, y = Density, color = zone), alpha = 0.5) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% group_by(year, zone, bathy) %>% summarize(prob = mean(PresAbs))), aes(x = bathy, y = prob, color = factor(zone)), alpha = 0.5) +
   xlab("Scaled Bathymetry") +
-  ylab("Harbor Seal Density") +
+  ylab("Probability of Harbor Seal Sighting") +
   theme_classic()
 
+# distance from shore
+HSFine_dist <- 
+  with(
+    daily_mbm_grid,
+    data.frame(
+      dist = seq(-1,2, 0.025),
+      dth = mean(dth),
+      bathy = mean(bathy)))
 
+HSFine2_dist <- 
+  cbind(HSFine_dist,
+        predict(HSeal_daily_mod, newdata = HSFine_dist, type = "response", se = TRUE))
+
+HSFine2_dist <- within(HSFine2_dist, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+ggplot(HSFine2_dist) + 
+  geom_ribbon(aes(x = dist, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = dist, y = fit)) +
+  geom_point(data = (daily_mbm_grid %>%
+                       filter(Species_code == 'HSeal') %>%
+                       group_by(year, zone, dist) %>%
+                       summarize(prob = mean(PresAbs))),
+             aes(x = dist, y = prob, color = factor(zone)), alpha = 0.5) +
+  xlab("Scaled Distance from Shore") +
+  ylab("Probability of Harbor Seal Sighting") +
+  theme_classic()
+
+# delta tide height
+HSFine_dth <- 
+  with(
+    daily_mbm_grid,
+    data.frame(
+      dist = mean(dist),
+      dth = seq(-3,2, 0.025),
+      bathy = mean(bathy)))
+
+HSFine2_dth <- 
+  cbind(HSFine_dth,
+        predict(HSeal_daily_mod, newdata = HSFine_dth, type = "response", se = TRUE))
+
+HSFine2_dth <- within(HSFine2_dth, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+ggplot(HSFine2_dth) + 
+  geom_ribbon(aes(x = dth, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = dth, y = fit)) +
+  geom_point(data = (daily_mbm_grid %>%
+                       filter(Species_code == 'HSeal') %>%
+                       group_by(year, zone) %>%
+                       summarize(dth = mean(dth),
+                                 prob = mean(PresAbs))),
+             aes(x = dth, y = prob, color = factor(zone)), alpha = 0.5) +
+  xlab("Scaled Delta Tide Height") +
+  ylab("Probability of Harbor Seal Sighting") +
+  theme_classic()
 
 
 
