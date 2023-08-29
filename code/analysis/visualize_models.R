@@ -6,6 +6,7 @@ library(tidyverse)
 library(PerformanceAnalytics)
 library(mgcv)
 library(lme4)
+library(sf)
 
 env_grid <- 
   read_csv('data/clean/env_grid.csv')
@@ -156,9 +157,13 @@ HPorp_daily_mod <-
       family = 'binomial')
 
 
-# Glaucous gull -----------------------------------------------------------
+# Individual Effect Curves ------------------------------------------------
 
-## coarse-scale ------------------------------------------------------------
+# this section creates effect curves for each variable in our species distribution models
+
+## Glaucous gull -----------------------------------------------------------
+
+### coarse-scale ------------------------------------------------------------
 # bathy, dist, phyto, temp_sd, sst
 
 # bathymetry
@@ -303,7 +308,7 @@ ggplot(GLCoarse2_tempsd) +
   theme_classic() # gulls are more common in regions high temp_sd
 
 
-## fine-scale --------------------------------------------------------------
+### fine-scale --------------------------------------------------------------
 # bathy, dist, sst
 
 # bathymetry
@@ -382,10 +387,10 @@ ggplot(GLFine2_sst) +
   theme_classic() # gulls are more common at lower sea-surface temperature values
 
 
-# Common Murre ------------------------------------------------------------
+## Common Murre ------------------------------------------------------------
 
 
-## coarse-scale models -----------------------------------------------------
+### coarse-scale models -----------------------------------------------------
 # dist, bathy, salt, phyto, temp_sd, sst
 
 # distance from shore
@@ -563,7 +568,7 @@ ggplot(CMcoarse2_sst) +
   theme_classic() # gulls are more common at lower sea-surface temperature values
 
 
-## fine-scale models -----------------------------------------------------
+### fine-scale models -----------------------------------------------------
 # dist, dth, bathy, phyto
 
 # distance from shore
@@ -671,10 +676,10 @@ ggplot(CMFine2_phyto) +
   theme_classic() # murres are more common in more productive waters
 
 
-# Harbor Seals ------------------------------------------------------------
+## Harbor Seals ------------------------------------------------------------
 
 
-## coarse-scale models -----------------------------------------------------
+### coarse-scale models -----------------------------------------------------
 
 # bathy, phyto
 # bathymetry
@@ -730,7 +735,7 @@ ggplot(HScoarse2_phyto) +
   theme_classic() # seals are more common in intermediate phytoplankton concentrations
 
 
-## fine-scale models -------------------------------------------------------
+### fine-scale models -------------------------------------------------------
 
 # bathy, dist, dth
 
@@ -819,5 +824,131 @@ ggplot(HSFine2_dth) +
   theme_classic()
 
 
+# Prediction Spaces -------------------------------------------------------
 
 
+## scale prediction data ---------------------------------------------------
+
+## make a tibble with daily values of scaled environmental variables across study area
+scaled_env_grid <- 
+  env_grid %>% 
+  # remove outliers in distnace from shore
+  # 1.5 * iqr = 3292.59 m
+  # upper outlier limit is 6000m from shore
+  mutate(dist = if_else(
+    dist > 6000,
+    6000,
+    dist)) %>% 
+  # scale env_grid
+  # change zone to a factor
+  mutate(zone = factor(zone),
+         Year = lubridate::year(Date)) %>% 
+  # scale environmental variables
+  mutate_at(c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt'), base::scale) %>% 
+  group_by(Year, grid_id) %>% 
+  summarize_if(is.numeric, mean, na.rm = T) %>% 
+  ungroup()
+
+## make coarse-scale predictions --------------------------------------------------------
+
+# make predictions of species presence abundance across study area
+
+predicted_grid <- 
+  scaled_env_grid %>% 
+  mutate(
+    GL = predict(GL_interann_mod, newdata = scaled_env_grid, type = "response"),
+    CoMu = predict(CoMu_interann_mod, newdata = scaled_env_grid, type = "response"),
+    HSeal = predict(HSeal_interann_mod, newdata = scaled_env_grid, type = "response"))
+
+
+# average abundance/presence across all 5-years
+
+predicted_predators <-
+  predicted_grid %>% 
+  dplyr::select(grid_id, lat_deg, long_deg, GL:HSeal) %>% 
+  group_by(grid_id) %>% 
+  summarize(lat_deg = mean(lat_deg),
+            long_deg = mean(long_deg),
+            GL.m = mean(GL, na.rm = T),
+            GL.sd = sd(GL, na.rm = T),
+            CoMu.m = mean(CoMu, na.rm = T),
+            CoMu.sd = sd(CoMu, na.rm = T),
+            HSeal.m = mean(HSeal, na.rm = T), 
+            HSeal.sd = sd(HSeal, na.rm = T)) %>% 
+  st_as_sf(coords = c("long_deg", "lat_deg"), crs = 4326)
+  
+# find the percentile of abundance / presence for each species in each cell
+# PERCENTILE #
+
+# GL
+GL.per <- c(0,
+            predicted_predators$GL.m %>% quantile(0.1, na.rm = T),
+            predicted_predators$GL.m %>% quantile(0.3, na.rm = T),
+            predicted_predators$GL.m %>% quantile(0.7, na.rm = T),
+            predicted_predators$GL.m %>% quantile(0.9, na.rm = T),
+            predicted_predators$GL.m %>% quantile(1, na.rm = T))
+
+# CM
+CM.per <- c(
+  predicted_predators$CoMu.m %>% quantile(1, na.rm = T), 
+  predicted_predators$CoMu.m %>% quantile(0.9, na.rm = T), 
+  predicted_predators$CoMu.m %>% quantile(0.7, na.rm = T), 
+  predicted_predators$CoMu.m %>% quantile(0.3, na.rm = T),  
+  predicted_predators$CoMu.m %>% quantile(0.1, na.rm = T), 
+  0)
+
+# HS
+HS.per <- c(0,
+            predicted_predators$HSeal.m %>% quantile(0.1),
+            predicted_predators$HSeal.m %>% quantile(0.3),
+            predicted_predators$HSeal.m %>% quantile(0.7),
+            predicted_predators$HSeal.m %>% quantile(0.9),
+            predicted_predators$HSeal.m %>% quantile(1))
+
+predicted_predators <-
+  predicted_predators %>%
+  mutate(
+    GL.p = cut(GL.m, breaks = GL.per, labels = c(-2,-1,0,1,2)), 
+    CM.p = cut(CoMu.m, breaks = CM.per, labels = c(-2,-1,0,1,2)),
+    HS.p = cut(HSeal.m, breaks = HS.per, labels = c(-2,-1,0,1,2))) %>% 
+  # project into NAD83, UTM Zone 10N
+  st_transform(predicted_predators, crs = 26910)
+
+
+## plot results ------------------------------------------------------------
+
+islands <- st_read('data/GIS/land_area.shp')
+
+## GLAUCOUS WINGED GULL
+ggplot() +
+  geom_sf(data = islands, fill = "grey") +
+  geom_sf(data = predicted_predators, aes(fill = GL.p), size = 2.75, shape = 22) +
+  scale_fill_cmocean(name = "balance", discrete = TRUE, labels = c("10", "30", "50", "70", "90")) +
+  ggtitle("Glaucous W. Gull Predicted Habitat (Autumn)") +
+  xlab("Longitude (ºW)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal() +
+  theme(legend.position="bottom")
+## COMMON MURRE ##
+ggplot() +
+  geom_sf(data = islands, fill = "grey") +
+  geom_sf(data = predicted_predators, aes(fill = CM.p), size = 2.75, shape = 22) +
+  scale_fill_cmocean(name = "balance", discrete = TRUE) +
+  ggtitle("Common Murre Predicted Habitat (Autumn)") +
+  xlab("Longitude (ºW)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal() + 
+  theme(legend.position="bottom")
+## HARBOR SEAL ##
+ggplot() +
+  geom_sf(data = islands, fill = "grey") +
+  geom_sf(data = predicted_predators, aes(fill = HS.p), size = 2.75, shape = 22) +
+  scale_fill_cmocean(name = "balance", discrete = TRUE) + 
+  ggtitle("Harbor Seal Predicted Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal() +
+  theme(legend.position="bottom")
