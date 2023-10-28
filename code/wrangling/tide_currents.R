@@ -182,6 +182,17 @@ proxy %>% group_by(Year) %>%
     sd = sd(Amplitude, na.rm = TRUE)
   )
 
+# general ANOVA across all data
+proxy <- 
+  proxy %>% 
+  group_by(Year, Station) %>% 
+  summarize(
+    Avg.Amplitude = mean(Amplitude),
+    SD = sd(Amplitude))
+
+tide.aov.general <- aov(Avg.Amplitude ~ Year, data = proxy)
+
+# station specific ANOVA
 variable_stations <-
   tibble()
 
