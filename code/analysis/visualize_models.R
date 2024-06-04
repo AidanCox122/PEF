@@ -233,7 +233,8 @@ GLCoarse2_bathy <- within(GLCoarse2_bathy, {
   UL <- fit + (1.96 * se.fit)}) %>% 
   mutate(countInt = round(fit, digits = 0))
 
-GLCoarse2_bathy %>% 
+GLcoarse_bathy_plot <- 
+  GLCoarse2_bathy %>% 
   unscale('bathy', .) %>% 
   ggplot() + 
   geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
@@ -263,13 +264,14 @@ GLCoarse2_dist <- within(GLCoarse2_dist, {
   LL <- fit - (1.96 * se.fit)
   UL <- fit + (1.96 * se.fit)})
 
-GLCoarse2_dist %>% 
+GLcoarse_dist_plot <- 
+  GLCoarse2_dist %>% 
   unscale('dist', .) %>% 
   ggplot() + 
-  geom_ribbon(aes(x = dist, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = dist, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('dist', .)), aes(x = dist, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
-  xlab("Distance from Shore (m)") +
+  geom_ribbon(aes(x = dist/1000, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = dist/1000, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('dist', .)), aes(x = dist/1000, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  xlab("Distance from Shore (km)") +
   ylab("Glaucous Gull Count") +
   theme_classic() # gulls are more common farther from shore
 
@@ -293,7 +295,8 @@ GlCoarse2_sst <- within(GlCoarse2_sst, {
   LL <- fit - (1.96 * se.fit)
   UL <- fit + (1.96 * se.fit)})
 
-GlCoarse2_sst %>% 
+GL_coarse_sst_plot <- 
+  GlCoarse2_sst %>% 
   unscale('sst', .) %>% 
   ggplot() + 
   geom_ribbon(aes(x = sst, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
@@ -323,7 +326,8 @@ GLCoarse2_phyto <- within(GLCoarse2_phyto, {
   LL <- fit - (1.96 * se.fit)
   UL <- fit + (1.96 * se.fit)})
 
-GLCoarse2_phyto %>% 
+GL_coarse_phyto_plot <- 
+  GLCoarse2_phyto %>% 
   unscale('phyto', .) %>% 
   ggplot() + 
   geom_ribbon(aes(x = phyto, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
@@ -353,7 +357,8 @@ GLCoarse2_tempsd <- within(GLCoarse2_tempsd, {
   LL <- fit - (1.96 * se.fit)
   UL <- fit + (1.96 * se.fit)})
 
-GLCoarse2_tempsd %>% 
+GL_coarse_tempsd_plot <- 
+  GLCoarse2_tempsd %>% 
   unscale('temp_sd', .) %>% 
   ggplot() + 
   geom_ribbon(aes(x = temp_sd, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
@@ -470,13 +475,14 @@ CMcoarse2_dist <- within(CMcoarse2_dist, {
   LL <- fit - (1.96 * se.fit)
   UL <- fit + (1.96 * se.fit)})
 
-CMcoarse2_dist %>% 
+CM_coarse_dist_plot <- 
+  CMcoarse2_dist %>% 
   unscale('dist', .) %>% 
   ggplot() + 
-  geom_ribbon(aes(x = dist, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = dist, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('dist', .)), aes(x = dist, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
-  xlab("Distance from Shore (m)") +
+  geom_ribbon(aes(x = dist/1000, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = dist/1000, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('dist', .)), aes(x = dist/1000, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  xlab("Distance from Shore (km)") +
   ylab("Common Murre Count") +
   theme_classic() # gulls are more common at lower sea-surface temperature values
 
@@ -501,7 +507,8 @@ CMcoarse2_bathy <- within(CMcoarse2_bathy, {
   LL <- fit - (1.96 * se.fit)
   UL <- fit + (1.96 * se.fit)})
 
-CMcoarse2_bathy %>% 
+CM_coarse_bathy_plot <- 
+  CMcoarse2_bathy %>% 
   unscale('bathy', .) %>% 
   ggplot() + 
   geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
@@ -532,7 +539,8 @@ CMcoarse2_salt <- within(CMcoarse2_salt, {
   LL <- fit - (1.96 * se.fit)
   UL <- fit + (1.96 * se.fit)})
 
-CMcoarse2_salt %>% 
+CM_coarse_salt_plot <- 
+  CMcoarse2_salt %>% 
   unscale('salt', .) %>% 
   ggplot() + 
   geom_ribbon(aes(x = salt, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
@@ -563,7 +571,8 @@ CMcoarse2_phyto <- within(CMcoarse2_phyto, {
   LL <- fit - (1.96 * se.fit)
   UL <- fit + (1.96 * se.fit)})
 
-CMcoarse2_phyto %>% 
+CM_coarse_phyto_plot <- 
+  CMcoarse2_phyto %>% 
   unscale('phyto', .) %>% 
   ggplot() + 
   geom_ribbon(aes(x = phyto, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
@@ -594,7 +603,8 @@ CMcoarse2_tempsd <- within(CMcoarse2_tempsd, {
   LL <- fit - (1.96 * se.fit)
   UL <- fit + (1.96 * se.fit)})
 
-CMcoarse2_tempsd %>% 
+CM_coarse_tempsd_plot <- 
+  CMcoarse2_tempsd %>% 
   unscale('temp_sd', .) %>% 
   ggplot() + 
   geom_ribbon(aes(x = temp_sd, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
@@ -625,7 +635,8 @@ CMcoarse2_sst <- within(CMcoarse2_sst, {
   LL <- fit - (1.96 * se.fit)
   UL <- fit + (1.96 * se.fit)})
 
-CMcoarse2_sst %>% 
+CM_coarse_sst_plot <- 
+  CMcoarse2_sst %>% 
   unscale('sst', .) %>% 
   ggplot() + 
   geom_ribbon(aes(x = sst, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
@@ -768,7 +779,8 @@ HScoarse2_bathy <- within(HScoarse2_bathy, {
   LL <- fit - (1.96 * se.fit)
   UL <- fit + (1.96 * se.fit)})
 
-HScoarse2_bathy %>% 
+HS_coarse_bathy_plot <- 
+  HScoarse2_bathy %>% 
   unscale('bathy', .) %>% 
   ggplot() + 
   geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
@@ -796,6 +808,7 @@ HScoarse2_phyto <- within(HScoarse2_phyto, {
   LL <- fit - (1.96 * se.fit)
   UL <- fit + (1.96 * se.fit)})
 
+HS_coarse_phyto_plot <- 
 HScoarse2_phyto %>% 
   unscale('phyto', .) %>%
   ggplot() + 
@@ -895,6 +908,123 @@ ggplot(HSFine2_dth) +
   ylab("Probability of Harbor Seal Sighting") +
   theme_classic()
 
+
+# Harbor Porpoise ---------------------------------------------------------
+
+
+## coarse-scale models -----------------------------------------------------
+
+# sst, bathy
+# sst
+HPcoarse_sst <- 
+  with(
+    interannual_mbm_grid,
+    data.frame(
+      Effort_sqkm = mean(Effort_sqkm),
+      bathy = mean(bathy),
+      sst = seq(-0.6,0.6, 0.025)))
+
+HPcoarse2_sst <- 
+  cbind(HPcoarse_sst,
+        predict(HPorp_interann_mod, newdata = HPcoarse_sst, type = "response", se = TRUE))
+
+HPcoarse2_sst <- within(HPcoarse2_sst, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+HPcoarse_sst_plot <- 
+  HPcoarse2_sst %>% 
+  unscale('sst', .) %>% 
+  ggplot() + 
+  geom_ribbon(aes(x = sst, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = sst, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'HPorp') %>% unscale('sst', .)), aes(x = sst, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  xlab("Sea Surface Temperature (ºC)") +
+  ylab("Harbor Porpoise Count") +
+  theme_classic() # seals are more common in shallow water up to a threshold
+
+# bathy
+HPcoarse_bathy <- 
+  with(
+    interannual_mbm_grid,
+    data.frame(
+      Effort_sqkm = mean(Effort_sqkm),
+      bathy = seq(-2,2, 0.025),
+      sst = mean(sst)))
+
+HPcoarse2_bathy <- 
+  cbind(HPcoarse_bathy,
+        predict(HPorp_interann_mod, newdata = HPcoarse_bathy, type = "response", se = TRUE))
+
+HPcoarse2_bathy <- within(HPcoarse2_bathy, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)})
+
+HPcoarse_bathy_plot <- 
+  HPcoarse2_bathy %>% 
+  unscale('bathy', .) %>% 
+  ggplot() + 
+  geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = bathy, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'HPorp') %>% unscale('bathy', .)), aes(x = bathy, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  xlab("Bathymetry (m)") +
+  ylab("Harbor Porpoise Count") +
+  theme_classic() # seals are more common in shallow water up to a threshold
+
+
+
+# Save Figure 4 -----------------------------------------------------------
+coarse_plots <- 
+  list(
+    # glaucous-winged gull
+    GLcoarse_bathy_plot,
+    GLcoarse_dist_plot,
+    GL_coarse_sst_plot,
+    GL_coarse_phyto_plot,
+    GL_coarse_tempsd_plot,
+    # common murre
+    CM_coarse_dist_plot,
+    CM_coarse_bathy_plot,
+    CM_coarse_salt_plot,
+    CM_coarse_phyto_plot,
+    CM_coarse_tempsd_plot,
+    CM_coarse_sst_plot,
+    # harbor seal
+    HS_coarse_bathy_plot,
+    HS_coarse_phyto_plot,
+    # harbor porpoise
+    HPcoarse_sst_plot,
+    HPcoarse_bathy_plot) %>% 
+  set_names(
+    c(# glaucous-winged gull
+      'GLcoarse_bathy_plot',
+      'GLcoarse_dist_plot',
+      'GL_coarse_sst_plot',
+      'GL_coarse_phyto_plot',
+      'GL_coarse_tempsd_plot',
+      # common murre
+      'CM_coarse_dist_plot',
+      'CM_coarse_bathy_plot',
+      'CM_coarse_salt_plot',
+      'CM_coarse_phyto_plot',
+      'CM_coarse_tempsd_plot',
+      'CM_coarse_sst_plot',
+      # harbor seal
+      'HS_coarse_bathy_plot',
+      'HS_coarse_phyto_plot',
+      # harbor porpoise
+      'HPcoarse_sst_plot',
+      'HPcoarse_bathy_plot'))
+
+for (x in names(coarse_plots)) {
+  fname <-
+    paste0('products/figure4/raw/', (x), '.jpg')
+  ggsave(fname,
+         coarse_plots[[x]],
+         width = 3.68,
+         height = 2.98,
+         units = 'in')
+  print(paste('Done with', x))}
 
 # Prediction Spaces -------------------------------------------------------
 
