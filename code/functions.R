@@ -273,4 +273,21 @@ get_gam <-
     return(AICw)
   }
 
+# unscale funciton
+unscale <- 
+  function(x, data){
+    
+    scale_info <- 
+      scale_factors %>% 
+      filter(variable == x)
+    
+    funct <- 
+      function(y){
+        ((y * scale_info$scale) + scale_info$center)}
+    
+    unscaled <- 
+      data  %>%  
+      mutate_at(x, funct)
+    
+    return(unscaled)}
   
