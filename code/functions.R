@@ -273,10 +273,11 @@ get_gam <-
     return(AICw)
   }
 
-# unscale funciton
+
+# Unscale Environmenal Variables ------------------------------------------
+
 unscale <- 
   function(x, data){
-    
     scale_info <- 
       scale_factors %>% 
       filter(variable == x)
@@ -291,3 +292,116 @@ unscale <-
     
     return(unscaled)}
   
+
+# Generalized Additive Mixed Model Weights --------------------------------
+
+get_gamm <- 
+  # function will accept inputs where base is a vector of established predictors,
+  # and test will be a vector of predictors to include in the next iteration of forward selection
+  function(base = NULL, test, random, species = NULL, training = NULL) {
+    if(is.null(training)){
+      stop('NO TRAINING DATA PROVIDED')}
+    
+    if(is.null(random)){
+      stop('NO RANDOM VARIABLES PROVIDED, USE get_gam() FUNCTION')}
+    
+    if(any(!random %in% names(training))) {
+      warning('Random variable not among training data')}
+    if(is.null(species)){
+      warning('SPECIES CODE NOT PROVIDED, TRAINING DATA MAY CONTAIN MULTIPLE SPECIES')
+    }
+    # create a repository
+    models <- vector(
+      mode = 'list',
+      length = length(test)) %>% 
+      set_names(unique(test))
+    
+    data <-
+      training %>% 
+      filter(Species_code == species)
+    
+    # create formula components for random variables
+    # create a repository
+    random_out <- tibble(
+      output = c()) 
+    # create a formula component for each element of base
+    for(i in 1:length(random)) {
+      output <- tibble(output = paste0('s(', random[i], ',bs=', print("'re')"), collapse = '', sep = ''))
+      random_out <- rbind(random_out, output)}
+    
+    # now create a reference model with only the base variables
+    if(is.null(base)){
+      # if base is null, find AIC for each test model
+      for(x in names(models)) {
+        form <- 
+          paste('Density~',
+                's(',
+                x,
+                ',k=3)+',
+                paste(pull(random_out, output), collapse = '+'),
+                sep = '')
+        
+        m1 <- 
+          gam(formula = as.formula(form),
+              family = nb,
+              data = data)
+        
+        models[x] <- 
+          AIC(m1)}
+      # if base is null, compare to a model with only random effects
+      form2 <- paste0(
+        'Density~1+', 
+        paste(pull(random_out, output), collapse = '+'))
+      
+      m2 <- 
+        gam(formula = as.formula(form2),
+            family = nb,
+            data = data)
+      # store the results in the models list
+      models$null <- 
+        AIC(m2)
+    } else{
+      # otherwise, if base is not null, build a new formula
+      
+      # separate base if it has multiple components
+      # create a repository
+      base_out <- tibble(
+        output = c()) 
+      # create a formula component for each element of base
+      for(i in 1:length(base)) {
+        output <- tibble(output = paste0('s(', base[i], ',k=3)', collapse = '', sep = ''))
+        base_out <- rbind(base_out, output)}
+      
+      # find AIC for each test model
+      for(x in names(models)) {
+        form <- 
+          paste('Density~', paste0(pull(base_out, output), collapse = '', sep = '+'),
+                's(',
+                x,
+                ',k=3)+',
+                paste(pull(random_out, output), collapse = '+'),
+                sep = '')
+        
+        m1 <- 
+          gam(formula = as.formula(form),
+              family = nb,
+              data = data)
+        
+        models[x] <- 
+          AIC(m1)}
+      
+      form2 <- 
+        paste0('Density~', paste0(pull(base_out, output),collapse = '', sep = '+'), paste(pull(random_out, output), collapse = '+'))
+      m2 <- 
+        gam(formula = as.formula(form2),
+            family = nb,
+            data = data)
+      models$null <- 
+        AIC(m2)
+    }
+    # calculate AIC weights
+    vec_AIC <- unlist(models)
+    dAIC <- vec_AIC - min(vec_AIC)
+    AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+    return(AICw)
+  }

@@ -68,7 +68,9 @@ daily_mbm_grid <-
   left_join(
     (cruises_ocean_time_all %>% 
       dplyr::select(Date, cruise.gen)),
-    by = 'Date')
+    by = 'Date') # %>% 
+  # # add a year column
+  # mutate(year = lubridate::year(Date))
 
 interspeciesComp <- 
   daily_mbm_grid %>% 
