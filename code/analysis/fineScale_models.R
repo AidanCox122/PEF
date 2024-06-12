@@ -74,7 +74,7 @@ daily_mbm_grid <-
 
 interspeciesComp <- 
   daily_mbm_grid %>% 
-  dplyr::select(Date:dth, Species_code, Density) %>% 
+  dplyr::select(Date:dth, year, Species_code, Density) %>% 
   pivot_wider(names_from = Species_code,
               values_from = Density) %>% 
   mutate(Species_code = 'All')
