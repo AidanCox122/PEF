@@ -189,7 +189,7 @@ for (x in names(zone_comp_plots)) {
 ## glaucous-winged gull ----------------------------------------------------
 GL.kw <- 
   GL.kw %>%
-  mutate(year = lubridate::year(Date)) %>% 
+  mutate(year = lubridate::year(Date)) # %>% 
   filter(year >= 2017)
 
 # this chunk will compare differences in species abundance between years
@@ -203,7 +203,7 @@ pairwise.wilcox.test(GL.kw$Density, GL.kw$year,
 
 CM.kw <- 
   CM.kw %>% 
-  mutate(year = lubridate::year(Date)) %>% 
+  mutate(year = lubridate::year(Date)) # %>% 
   filter(year >= 2017)
 
 # this chunk will compare differences in species abundance between years
@@ -215,7 +215,7 @@ print(kruskal.test(Density ~ year, data = CM.kw)) # there are highly significant
 ## harbor seal -------------------------------------------------------------
 HSeal <- 
   HSeal %>%
-  mutate(year = lubridate::year(Date)) %>% 
+  mutate(year = lubridate::year(Date)) #%>% 
   filter(year >= 2017)
 
 # this chunk will compare differences in species abundance between years
@@ -226,10 +226,10 @@ pairwise.wilcox.test(HSeal$Density, HSeal$year,
 )
 
 
-# harbor porpoise ---------------------------------------------------------
+## harbor porpoise ---------------------------------------------------------
 HPorp <- 
   HPorp %>%
-  mutate(year = lubridate::year(Date)) %>% 
+  mutate(year = lubridate::year(Date)) #%>% 
   filter(year >= 2017)
 
 # this chunk will compare differences in species abundance between years
@@ -238,5 +238,44 @@ print(kruskal.test(Density ~ year, data = HPorp)) # there are highly significant
 pairwise.wilcox.test(HPorp$Density, HPorp$year,
                      p.adjust.method = "bonferroni" # apply Bonferroni's correction
 )
+
+
+# week ANOVA --------------------------------------------------------------
+
+## glaucous-winged gull ---------------------------------------------------------
+
+GL.kw %>% 
+  mutate(week = 
+           lubridate::week(Date)) %>% 
+  # this chunk will compare differences in species abundance between week
+  kruskal.test(Density ~ week, data = .) %>% 
+  print() # p = 0.159
+
+## common murre ---------------------------------------------------------
+
+CM.kw %>% 
+  mutate(week = 
+           lubridate::week(Date)) %>% 
+  # this chunk will compare differences in species abundance between week
+  kruskal.test(Density ~ week, data = .) %>% 
+  print() # p = 0.000759
+
+## harbor seal ---------------------------------------------------------
+
+HSeal %>% 
+  mutate(week = 
+           lubridate::week(Date)) %>% 
+  # this chunk will compare differences in species abundance between week
+  kruskal.test(Density ~ week, data = .) %>% 
+  print() # p = 0.0005277
+
+## harbor porpoise ---------------------------------------------------------
+
+HPorp %>% 
+  mutate(week = 
+           lubridate::week(Date)) %>% 
+  # this chunk will compare differences in species abundance between weeks
+  kruskal.test(Density ~ week, data = .) %>% 
+  print() # there are no significant differences between the zones
 
 

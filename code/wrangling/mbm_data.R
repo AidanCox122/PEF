@@ -106,3 +106,30 @@ mydata_bydatezone <-
 mydata_bydatezone$Density <- round(mydata_bydatezone$Count / mydata_bydatezone$Effort_sqkm,2)
 
 write_csv(mydata_bydatezone, 'data/clean/mbm_master.csv')
+
+
+# summaries ---------------------------------------------------------------
+
+# calculate average count and density
+mydata_bydatezone %>% 
+  # filter to the species of interest
+  filter(Species_code == 'HPorp') %>% 
+  # group by zone
+  group_by(Zone) %>% 
+  summarize(
+    Avg.Count = mean(Count, na.rm = T),
+    Avg.Density = mean(Density, na.rm = T))
+
+# calculate total sightings per year
+
+mydata_bydatezone %>% 
+  mutate(Year = lubridate::year(Date)) %>% 
+  # filter to the species of interest
+  filter(Species_code == 'HSeal') %>% 
+  # group by zone
+  group_by(Year) %>% 
+  summarize(
+    Tot.Count = sum(Count),
+    Avg.Density = mean(Density, na.rm = T)) %>% 
+  arrange(Tot.Count)
+
