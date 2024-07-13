@@ -39,16 +39,14 @@ interannual_mbm_grid <-
   # lots of NAs from years prior to 2017
   filter(!is.na(bathy)) %>% # n = 672
   mutate(year = lubridate::year(Date)) %>% 
-  # scale predictors
-  mutate_at(c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt'), base::scale) %>%
   # calculate average conditions in each zone in each year
   group_by(year, zone, Species_code) %>% 
   summarize_if(is.numeric, mean, na.rm = T) %>% 
   ungroup() %>% 
-  mutate(countInt = round(Count,0))
-
-# scale the variables 
-
+  # scale predictors
+  mutate_at(c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt'), base::scale) %>% 
+  mutate(countInt = round(Count,0)) 
+  
 # model training -----------------------------------------------------------
 
 interannual_mbm_grid %>% 
@@ -74,25 +72,26 @@ getWeightIANN(base = c('bathy', 'dist'),
               test = c('phyto', 'sst', 'temp_sd', 'salt'),
               species = 'GL',
               training = interannual_mbm_grid)
-# phytoplankton is the best predictor
+# salt is the best predictor
 
 # forward selection 4
-getWeightIANN(base = c('bathy', 'dist', 'phyto'),
-              test = c('sst', 'salt', 'temp_sd'),
+getWeightIANN(base = c('bathy', 'dist', 'salt'),
+              test = c('phyto', 'sst', 'temp_sd'),
               species = 'GL',
               training = interannual_mbm_grid)
-# temp_sd is the best predictor
+# phyto is the best predictor
 
 # forward selection 5
-getWeightIANN(base = c('bathy', 'dist', 'phyto', 'temp_sd'),
-              test = c('salt', 'sst'),
+getWeightIANN(base = c('bathy', 'dist', 'salt', 'phyto'),
+              test = c('sst', 'temp_sd'),
               species = 'GL',
               training = interannual_mbm_grid)
-# sst is the best predictor
+# temp_sd is the best predictor 
+# but adding it makes SST insignificant - STOP here
 
 # forward selection 6
-getWeightIANN(base = c('bathy', 'dist', 'phyto', 'temp_sd', 'sst'),
-              test = c('salt'),
+getWeightIANN(base = c('bathy', 'dist', 'salt', 'phyto', 'temp_sd'),
+              test = c('sst'),
               species = 'GL',
               training = interannual_mbm_grid)
 
@@ -100,12 +99,12 @@ getWeightIANN(base = c('bathy', 'dist', 'phyto', 'temp_sd', 'sst'),
 
 ### best model predicting interannual variability in GL: -----
 GL_interann_mod <- 
-  gam(formula = countInt~ s(bathy,k=3)+s(dist,k=3)+s(phyto,k=3)+s(temp_sd,k=3)+s(sst,k=3),
+  gam(formula = countInt~ s(bathy,k=3)+s(dist,k=3)+s(salt,k=4)+s(phyto,k=4)+s(temp_sd,k=4),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'GL')))
 summary(GL_interann_mod)
-# r-squ. adj = 0.629
+# r-squ. adj = 0.618
 
 ## CoMu ----------------------------------------------------------------------
 # forward selection 1
@@ -119,44 +118,44 @@ getWeightIANN(base = c('dist'),
               test = c('bathy', 'phyto', 'sst', 'temp_sd', 'salt'),
               species = 'CoMu',
               training = interannual_mbm_grid)
-# bathymetry is the best predictor
-
-# forward selection 3
-getWeightIANN(base = c('dist', 'bathy'),
-              test = c('temp_sd', 'sst', 'phyto', 'salt'),
-              species = 'CoMu',
-              training = interannual_mbm_grid)
-# salinity is the best predictor
-
-# forward selection 4
-getWeightIANN(base = c('dist', 'bathy', 'salt'),
-              test = c('temp_sd', 'sst', 'phyto'),
-              species = 'CoMu',
-              training = interannual_mbm_grid)
 # phytoplankton is the best predictor
 
-# forward selection 5
-getWeightIANN(base = c('dist', 'bathy', 'salt', 'phyto'),
-              test = c('sst', 'temp_sd'),
+# forward selection 3
+getWeightIANN(base = c('dist', 'phyto'),
+              test = c('bathy', 'temp_sd', 'sst', 'salt'),
               species = 'CoMu',
               training = interannual_mbm_grid)
 # temp_sd is the best predictor
 
-# forward selection 6
-getWeightIANN(base = c('dist', 'bathy', 'salt', 'phyto', 'temp_sd'),
-              test = c('sst'),
+# forward selection 4
+getWeightIANN(base = c('dist', 'phyto', 'temp_sd'),
+              test = c('bathy', 'sst', 'salt'),
               species = 'CoMu',
               training = interannual_mbm_grid)
-# sst is the best predictor 
+# salt is the best predictor
+
+# forward selection 5
+getWeightIANN(base = c('dist', 'phyto', 'temp_sd', 'salt'),
+              test = c('sst', 'bathy'),
+              species = 'CoMu',
+              training = interannual_mbm_grid)
+# sst is the best predictor
+
+# forward selection 6
+getWeightIANN(base = c('dist', 'phyto', 'temp_sd', 'salt', 'sst'),
+              test = c('bathy'),
+              species = 'CoMu',
+              training = interannual_mbm_grid)
+# bathy is the best predictor 
 
 ### best model for CoMu ----
 CoMu_interann_mod <- 
-  gam(formula = countInt~s(dist,k=3)+s(bathy,k=3)+s(salt,k=3)+s(phyto,k=3)+s(temp_sd,k=3)+s(sst,k=3),
+  gam(formula = countInt~s(dist,k=3)+s(phyto,k=4)+s(temp_sd,k=4)+s(salt,k=4)+s(sst,k=4)+s(bathy,k=3),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu')))
 summary(CoMu_interann_mod)
-# r-sq. adj. = 0.783
+# r-sq. adj. = 0.851
 
 ## HSeal ----------------------------------------------------------------------
 
@@ -179,30 +178,30 @@ getWeightIANN(base = c('bathy', 'phyto'),
               test = c('topog', 'dist', 'sst', 'temp_sd', 'salt'),
               species = 'HSeal',
               training = interannual_mbm_grid)
-# distance from shore is next best predictor
+# topography is the next best predictor
 
 # forward selection 4
-getWeightIANN(base = c('bathy', 'phyto', 'dist'),
-              test = c('topog', 'sst', 'temp_sd', 'salt'),
+getWeightIANN(base = c('bathy', 'phyto', 'topog'),
+              test = c('sst', 'temp_sd', 'salt'),
               species = 'HSeal',
               training = interannual_mbm_grid)
 # sst is the next best predictor
 
 # forward selection 4
-getWeightIANN(base = c('bathy', 'phyto', 'dist', 'sst'),
-              test = c('topog', 'temp_sd', 'salt'),
+getWeightIANN(base = c('bathy', 'phyto', 'topog', 'sst'),
+              test = c('temp_sd', 'salt'),
               species = 'HSeal',
               training = interannual_mbm_grid)
 # 50/50 between temp_sd and null model, stop here
 
 ### best model for HSeals ----
 HSeal_interann_mod <- 
-  gam(formula = countInt~ s(bathy,k=3)+s(phyto,k=3),
+  gam(formula = countInt~ s(bathy,k=3)+s(phyto,k=4),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'HSeal')))
 summary(HSeal_interann_mod)
-# r-squ. adj. = 0.633
+# r-squ. adj. = 0.628
 
 
 ## HPorp ----------------------------------------------------------------------
@@ -210,30 +209,37 @@ summary(HSeal_interann_mod)
 getWeightIANN(test = c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt'),
               species = 'HPorp',
               training = interannual_mbm_grid)
-# sst is the best predictor
-
-# forward selection 2
-getWeightIANN(base = c('sst'),
-              test = c('topog', 'dist', 'phyto', 'bathy', 'temp_sd', 'salt'),
-              species = 'HPorp',
-              training = interannual_mbm_grid)
 # bathymetry is the best predictor
 
+# forward selection 2
+getWeightIANN(base = c('bathy'),
+              test = c('topog', 'dist', 'phyto', 'sst', 'temp_sd', 'salt'),
+              species = 'HPorp',
+              training = interannual_mbm_grid)
+# sst is the best predictor
+
 # forward selection 3
-getWeightIANN(base = c('sst', 'bathy'),
+getWeightIANN(base = c('bathy', 'sst'),
               test = c('topog', 'dist', 'phyto', 'temp_sd', 'salt'),
               species = 'HPorp',
               training = interannual_mbm_grid)
-# NULL MODEL IS NEXT BEST
+# salt is the best predictor
+
+# forward selection 4
+getWeightIANN(base = c('bathy', 'sst', 'salt'),
+              test = c('topog', 'dist', 'phyto', 'temp_sd'),
+              species = 'HPorp',
+              training = interannual_mbm_grid)
+# NULL is the best predictor
 
 ### best model for HSPorps ----
 HPorp_interann_mod <- 
-  gam(formula = countInt~ s(sst, k=3)+s(bathy,k=3),
+  gam(formula = countInt~ s(bathy,k=3)+ s(sst,k=4) + s(salt, k=4),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'HPorp')))
 summary(HPorp_interann_mod) # this not significant!
-# adj. r-squared: 0.307
+# adj. r-squared: 0.63
 
 # Leave-one-out Validation ------------------------------------------------
 # This chunk performs leave-one-year-out validation on course-scale habitat models:

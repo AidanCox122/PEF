@@ -1,4 +1,12 @@
 
+
+# check for strings -------------------------------------------------------
+replace_k3_with_k4_stringr <- function(input_string) {
+  # Use str_replace_all to replace "k=3" with "k=4" specifically when it follows "phyto", "sst", "salt", or "temp_sd"
+  updated_string <- str_replace_all(input_string, "(s\\((phyto|sst|salt|temp_sd),k=)3(\\))", "\\14\\)")
+  return(updated_string)
+}
+
 # get interannual model weights -------------------------------------------------------
 
 # create a function to calculate AIC weights for different models
@@ -31,7 +39,8 @@ getWeightIANN <-
                 's(',
                 x,
                 ',k=3)',
-                sep = '')
+                sep = '') %>% 
+          replace_k3_with_k4_stringr(.)
         
         m1 <- 
           gam(formula = as.formula(form),
@@ -69,7 +78,8 @@ getWeightIANN <-
                 's(',
                 x,
                 ',k=3)',
-                sep = '')
+                sep = '') %>% 
+          replace_k3_with_k4_stringr(.)
         
         m1 <- 
           gam(formula = as.formula(form),
@@ -81,7 +91,9 @@ getWeightIANN <-
           AIC(m1)}
       
       form2 <- 
-        paste('countInt~', paste0(pull(base_out, output),collapse = '+'))
+        paste('countInt~', paste0(pull(base_out, output),collapse = '+')) %>% 
+        replace_k3_with_k4_stringr(.)
+      
       m2 <- 
         gam(formula = as.formula(form2),
             family = poisson,
