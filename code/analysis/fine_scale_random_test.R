@@ -141,7 +141,7 @@ AICw
 # forward selection 1
 get_gamm(
     test = c('tcur', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-    random = c('zone', 'cruise.gen'),
+    random = c('zone'),
     species = 'GL',
     training = daily_mbm_grid)
 
@@ -157,64 +157,41 @@ get_gamm(
 
 # null is the best model 
 
----
-## from a previous round of tests ##
-# forward selection 3
-get_gamm(
-  base = c('bathy', 'dist'),
-  test = c('phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-  random = c('year'),
-  species = 'GL',
-  training = daily_mbm_grid)
-
-# sst is the best model
-
-# forward selection 4
-get_gamm(
-  base = c('bathy', 'dist', 'sst'),
-  test = c('salt', 'dth'),
-  random = c('year'),
-  species = 'GL',
-  training = daily_mbm_grid)
-
-# dth is the best model but not significant
-
 ### interspecies effects GL ----
 
 get_gamm(
-  base = c('bathy', 'dist', 'sst'),
+  base = c('salt'),
   test = c('CoMu', 'HSeal', 'HPorp'),
-  random = c('year'),
+  random = c('zone'),
   species = 'All',
   training = (interspeciesComp %>% rename('Density' = GL)))
 
 # Common Murre was highly significant
 
 get_gamm(
-  base = c('bathy', 'dist', 'sst', 'CoMu'),
+  base = c('salt', 'CoMu'),
   test = c('HSeal', 'HPorp'),
-  random = c('year'),
-  species = 'All',
-  training = (interspeciesComp %>% rename('Density' = GL)))
-
-# Harbor Porpoise is best
-
-get_gamm(
-  base = c('bathy', 'dist', 'sst', 'CoMu', 'HPorp'),
-  test = c('HSeal'),
-  random = c('year'),
+  random = c('zone'),
   species = 'All',
   training = (interspeciesComp %>% rename('Density' = GL)))
 
 # null is best
 
 GL_test_mod <- 
-  gam(Density ~ s(bathy,k=3)+s(dist, k=3)+s(sst,k=3)+s(year, bs='re'),
+  gam(Density ~ s(salt,k=3)+s(zone, bs='re'),
       data = (daily_mbm_grid %>% filter(Species_code == 'GL')),
       family = nb)
 
 summary(GL_test_mod)
 # 30% of deviance explained
+
+# let's test the model as it was originally written up
+GL_og_mod <- 
+  gam(Density ~ s(sst,k=3)+s(zone, bs='re')+s(year, bs='re'),
+      data = (daily_mbm_grid %>% filter(Species_code == 'GL')),
+      family = nb)
+
+summary(GL_og_mod)
 
 # w. interspecies 
 GL_test_mod_interspecies <- 

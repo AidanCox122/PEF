@@ -552,3 +552,11 @@ t2 <- Sys.time()
 
 t2 - t1
 
+seabird.eval %>% 
+  group_by(Species_code) %>% 
+  summarize(
+    Avg.P.Err = mean(med.pe, na.rm = T),
+    SD.P.Err = sd(med.pe, na.rm = T),
+    Avg.R2 = mean(r.squ, na.rm = T),
+    Avg.DvEx = mean(dev.ex, na.rm = T),
+    SD.DevEx = sd(dev.ex, na.rm = T)) %>% View()

@@ -77,30 +77,30 @@ mydata_bydatezone %>%
   mydata_bydatezone
 
 # transform high outliers into highest regular count
-mydata_outlier <- 
-  mydata_bydatezone %>%
-  group_by(Species_code) %>%
-  filter(Count > quantile(Count, 0.75) + (1.5 * (quantile(Count,0.75) - quantile(Count,0.25))) | 
-           Count < quantile(Count, 0.25) - (1.5 * (quantile(Count,0.75) - quantile(Count,0.25))))
-
-mydata_regular <-
-  mydata_bydatezone %>%
-  group_by(Species_code) %>%
-  filter(Count <= quantile(Count, 0.75) + (1.5 * (quantile(Count,0.75) - quantile(Count,0.25))) & 
-           Count >= quantile(Count, 0.25) - (1.5 * (quantile(Count,0.75) - quantile(Count,0.25))))
-
-mydata_bydatezone <- 
-  # find the maximum non-outlier count for each species in each year
-  mydata_regular %>% 
-  filter(Year >= 2017) %>% 
-  group_by(Year, Species_code) %>%
-  filter(Count == max(Count)) %>% 
-  dplyr::select(Species_code, max.Count= Count, Year) %>% 
-  distinct() %>% 
-  # transform outlier values to highest non-outlier
-  right_join(mydata_outlier, by = c('Species_code', 'Year')) %>% 
-  dplyr::transmute(Species_code, Count = max.Count, Year, Date, Zone, Effort_sqkm) %>% 
-  rbind(mydata_regular)
+# mydata_outlier <- 
+#   mydata_bydatezone %>%
+#   group_by(Species_code) %>%
+#   filter(Count > quantile(Count, 0.75) + (1.5 * (quantile(Count,0.75) - quantile(Count,0.25))) | 
+#            Count < quantile(Count, 0.25) - (1.5 * (quantile(Count,0.75) - quantile(Count,0.25))))
+# 
+# mydata_regular <-
+#   mydata_bydatezone %>%
+#   group_by(Species_code) %>%
+#   filter(Count <= quantile(Count, 0.75) + (1.5 * (quantile(Count,0.75) - quantile(Count,0.25))) & 
+#            Count >= quantile(Count, 0.25) - (1.5 * (quantile(Count,0.75) - quantile(Count,0.25))))
+# 
+# mydata_bydatezone <- 
+#   # find the maximum non-outlier count for each species in each year
+#   mydata_regular %>% 
+#   filter(Year >= 2017) %>% 
+#   group_by(Year, Species_code) %>%
+#   filter(Count == max(Count)) %>% 
+#   dplyr::select(Species_code, max.Count= Count, Year) %>% 
+#   distinct() %>% 
+#   # transform outlier values to highest non-outlier
+#   right_join(mydata_outlier, by = c('Species_code', 'Year')) %>% 
+#   dplyr::transmute(Species_code, Count = max.Count, Year, Date, Zone, Effort_sqkm) %>% 
+#   rbind(mydata_regular)
 
 # compute species density by Date and Zone
 mydata_bydatezone$Density <- round(mydata_bydatezone$Count / mydata_bydatezone$Effort_sqkm,2)
