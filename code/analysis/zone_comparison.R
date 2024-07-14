@@ -260,6 +260,15 @@ CM.kw %>%
   kruskal.test(Density ~ week, data = .) %>% 
   print() # p = 0.000759
 
+CM.kw <-
+  CM.kw %>% 
+  mutate(week = 
+           lubridate::week(Date))
+
+pairwise.wilcox.test(CM.kw$Density, CM.kw$week,
+                     p.adjust.method = "bonferroni" # apply Bonferroni's correction
+)
+
 ## harbor seal ---------------------------------------------------------
 
 HSeal %>% 
@@ -277,5 +286,5 @@ HPorp %>%
   # this chunk will compare differences in species abundance between weeks
   kruskal.test(Density ~ week, data = .) %>% 
   print() # there are no significant differences between the zones
-
+0
 

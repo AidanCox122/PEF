@@ -125,7 +125,7 @@ mydata_bydatezone %>%
 mydata_bydatezone %>% 
   mutate(Year = lubridate::year(Date)) %>% 
   # filter to the species of interest
-  filter(Species_code == 'HSeal') %>% 
+  filter(Species_code == 'HPorp') %>% 
   # group by zone
   group_by(Year) %>% 
   summarize(

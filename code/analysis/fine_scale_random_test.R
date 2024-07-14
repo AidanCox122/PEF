@@ -74,7 +74,7 @@ daily_mbm_grid <-
 
 interspeciesComp <- 
   daily_mbm_grid %>% 
-  dplyr::select(Date:dth, year, Species_code, Density) %>% 
+  dplyr::select(Date:dth, year, cruise.gen, Species_code, Density) %>% 
   pivot_wider(names_from = Species_code,
               values_from = Density) %>% 
   mutate(Species_code = 'All')
@@ -141,7 +141,7 @@ AICw
 # forward selection 1
 get_gamm(
     test = c('tcur', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-    random = c('zone'),
+    random = c('zone', 'cruise.gen'),
     species = 'GL',
     training = daily_mbm_grid)
 
@@ -178,29 +178,21 @@ get_gamm(
 # null is best
 
 GL_test_mod <- 
-  gam(Density ~ s(salt,k=3)+s(zone, bs='re'),
+  gam(Density ~ s(salt,k=4)+s(zone, bs='re')+s(cruise.gen, bs='re'),
       data = (daily_mbm_grid %>% filter(Species_code == 'GL')),
       family = nb)
 
 summary(GL_test_mod)
-# 30% of deviance explained
-
-# let's test the model as it was originally written up
-GL_og_mod <- 
-  gam(Density ~ s(sst,k=3)+s(zone, bs='re')+s(year, bs='re'),
-      data = (daily_mbm_grid %>% filter(Species_code == 'GL')),
-      family = nb)
-
-summary(GL_og_mod)
+# 33.3% of deviance explained
 
 # w. interspecies 
 GL_test_mod_interspecies <- 
-  gam(GL ~ s(bathy,k=3)+s(dist,k=3)+s(sst,k=3)+s(CoMu,k=3)+s(year,bs='re'),
+  gam(GL ~ s(salt,k=4)+s(CoMu,k=3)+s(zone,bs='re')+s(cruise.gen,bs='re'),
       data = interspeciesComp,
       family = nb)
 
 summary(GL_test_mod_interspecies)
-#  40.8 deviance explained
+#  37.6 deviance explained
 
 # steal the best formula
 form_GL <- as.formula(summary(GL_test_mod)$formula)
@@ -222,6 +214,9 @@ dAIC <- vec_AIC - min(vec_AIC)
 AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
 AICw
 
+#cleanup
+rm(nb.CM00, nb.CM01, nb.CM02, nb.CM03, vec_AIC, dAIC, AICw)
+
 # random variable selection (2)
 nb.CM00 <- gam(Density ~ 1, family = nb, data=daily_mbm_grid %>% filter(Species_code == 'CoMu'))
 nb.CM01 <- gam(Density ~ s(zone, bs="re"), family = nb, data=daily_mbm_grid %>% filter(Species_code == 'CoMu'))
@@ -234,69 +229,63 @@ vec_AIC
 dAIC <- vec_AIC - min(vec_AIC)
 AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
 AICw
-## remaining models perform equally, sticking with zone as only random
+## cruise.gen is the next best
+
+#cleanup
+rm(nb.CM00, nb.CM01, nb.CM02, nb.CM03, vec_AIC, dAIC, AICw)
+
+# random variable selection (3)
+nb.CM00 <- gam(Density ~ 1, family = nb, data=daily_mbm_grid %>% filter(Species_code == 'CoMu'))
+nb.CM01 <- gam(Density ~ s(zone, bs="re")+s(cruise.gen, bs="re"), family = nb, data=daily_mbm_grid %>% filter(Species_code == 'CoMu'))
+nb.CM02 <- gam(Density ~ s(zone, bs="re")+s(cruise.gen, bs="re")+s(year, bs="re"), family = nb, data=daily_mbm_grid %>% filter(Species_code == 'CoMu'))
+
+# calculate AIC weights
+vec_AIC <- AIC(nb.CM00, nb.CM01, nb.CM02)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
 
 # forward selection 1
 get_gamm(
-  test = c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-  random = c('zone'),
+  test = c('phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+  random = c('zone', 'cruise.gen'),
   species = 'CoMu',
   training = daily_mbm_grid)
 
-# dth from shore is the best model
+# dth is the best model
 # year is not a significant random variable
 
 # forward selection 2
 get_gamm(
   base = c('dth'),
-  test = c('phyto', 'sst', 'temp_sd', 'salt', 'tcur'),
-  random = c('zone'),
+  test = c('phyto', 'sst', 'temp_sd', 'salt'),
+  random = c('zone', 'cruise.gen'),
   species = 'CoMu',
   training = daily_mbm_grid)
 # phytoplankton is the best model
 
-# forward selection 3
-get_gamm(
-  base = c('dth', 'phyto'),
-  test = c('tcur'),
-  random = c('year'),
-  species = 'CoMu',
-  training = daily_mbm_grid)
-
-# tidal current produces the best model
-
----
-  
-# forward selection 4
-get_gamm(
-  base = c('dist', 'dth', 'bathy'),
-  test = c('phyto', 'sst', 'temp_sd', 'salt'),
-  random = c('year'),
-  species = 'CoMu',
-  training = daily_mbm_grid)
-
-# phytoplankton produces the best model
-
 ### interspecies effects CoMu ----
 
 get_gamm(
-  base = c('dist', 'dth', 'bathy', 'phyto'),
+  base = c('dth', 'phyto'),
   test = c('GL', 'HSeal', 'HPorp'),
-  random = c('year'),
+  random = c('zone', 'cruise.gen'),
   species = 'All',
   training = (interspeciesComp %>% rename('Density' = CoMu)))
 #GL density improves model
 
 get_gamm(
-  base = c('dist', 'dth', 'bathy', 'phyto', 'GL'),
+  base = c('dth', 'phyto', 'GL'),
   test = c('HSeal', 'HPorp'),
-  random = c('year'),
+  random = c('zone', 'cruise.gen'),
   species = 'All',
   training = (interspeciesComp %>% rename('Density' = CoMu)))
 # HPorp density improves model
 
 get_gamm(
-  base = c('dist', 'dth', 'bathy', 'phyto', 'GL', 'HPorp'),
+  base = c('dth', 'phyto', 'GL', 'HPorp'),
   test = c('HSeal'),
   random = c('year'),
   species = 'All',
@@ -305,21 +294,206 @@ get_gamm(
 
 ### best model for CoMu ----
 CoMu_test_mod <- 
-  gam(Density ~ s(dist,k=3)+s(dth, k=3)+s(bathy,k=3)+s(year,bs='re'),
+  gam(Density ~ s(dth,k=3)+s(phyto,k=3)+s(zone,bs='re')+s(cruise.gen,bs='re'),
       data = (daily_mbm_grid %>% filter(Species_code == 'CoMu')),
       family = nb)
 
 summary(CoMu_test_mod)
-#  43.3% deviance explained
+#  45.7% deviance explained
 
 # steal the best formula
 form_CM <- as.formula(summary(CoMu_test_mod)$formula)
 
 # W. interspecies
 CoMu_daily_mod_interspec <- 
-  gam(CoMu ~ s(dist,k=3)+s(dth, k=3)+s(bathy,k=3)+s(phyto,k=3)+s(GL,k=3)+s(HPorp,k=3),
+  gam(CoMu ~ +s(dth, k=3)+s(phyto,k=3)+s(GL,k=3)+s(HPorp,k=3)+s(zone,bs='re')+s(cruise.gen,bs='re'),
       data = interspeciesComp,
       family = nb)
 
 summary(CoMu_daily_mod_interspec)
-# 55% deviance explained
+# 54.2% deviance explained
+
+
+# Harbor seal (logit) -------------------------------------------------------------
+
+# random variable selection (1)
+nb.HS00 <- glm(PresAbs ~ 1, family = 'binomial', data=daily_mbm_grid %>% filter(Species_code == 'HSeal'))
+nb.HS01 <- glmer(PresAbs ~ (1|zone), family = 'binomial', data=daily_mbm_grid %>% filter(Species_code == 'HSeal'))
+nb.HS02 <- glmer(PresAbs ~ (1|year), family = 'binomial', data=daily_mbm_grid %>% filter(Species_code == 'HSeal'))
+nb.HS03 <- glmer(PresAbs ~ (1|cruise.gen), family = 'binomial', data=daily_mbm_grid %>% filter(Species_code == 'HSeal'))
+
+# calculate AIC weights
+vec_AIC <- AIC(nb.HS00, nb.HS01, nb.HS02, nb.HS03)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+#cleanup
+rm(nb.HS00, nb.HS01, nb.HS02, nb.HS03, vec_AIC, dAIC, AICw)
+
+# random variable selection (2)
+nb.HS00 <- glmer(PresAbs ~ (1|zone), family = 'binomial', data=daily_mbm_grid %>% filter(Species_code == 'HSeal'))
+nb.HS01 <- glmer(PresAbs ~ (1|zone) + (1|year), family = 'binomial', data=daily_mbm_grid %>% filter(Species_code == 'HSeal'))
+nb.HS02 <- glmer(PresAbs ~ (1|zone) + (1|cruise.gen), family = 'binomial', data=daily_mbm_grid %>% filter(Species_code == 'HSeal'))
+
+# calculate AIC weights
+vec_AIC <- AIC(nb.HS00, nb.HS01, nb.HS02)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+#cleanup
+rm(nb.HS00, nb.HS01, nb.HS02, vec_AIC, dAIC, AICw)
+
+# random variable selection (2)
+nb.HS00 <- glmer(PresAbs ~ (1|zone) + (1|cruise.gen), family = 'binomial', data=daily_mbm_grid %>% filter(Species_code == 'HSeal'))
+nb.HS01 <- glmer(PresAbs ~ (1|zone) + (1|cruise.gen) + (1|year), family = 'binomial', data=daily_mbm_grid %>% filter(Species_code == 'HSeal'))
+
+# calculate AIC weights
+vec_AIC <- AIC(nb.HS00, nb.HS01)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+#cleanup
+rm(nb.HS00, nb.HS01, vec_AIC, dAIC, AICw)
+
+
+# FS:1
+get_mixed_logit(
+  test = c('phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+  random = c('zone', 'cruise.gen'),
+  species = 'HSeal',
+  training = daily_mbm_grid)
+# dth is the best model
+
+# FS:2
+get_mixed_logit(
+  base = c('dth'),
+  test = c('phyto', 'sst', 'temp_sd', 'salt'),
+  random = c('zone', 'cruise.gen'),
+  species = 'HSeal',
+  training = daily_mbm_grid)
+# phyto is best but not statistically significant
+
+### interspecies effects HSeal ----
+
+get_mixed_logit(
+  base = c('dth'),
+  test = c('CoMu', 'HPorp', 'GL'),
+  random = c('zone', 'cruise.gen'),
+  species = 'All',
+  training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
+# HPorp improves model
+
+get_mixed_logit(
+  base = c('dth', 'HPorp'),
+  test = c('CoMu', 'GL'),
+  random = c('zone', 'cruise.gen'),
+  species = 'All',
+  training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
+# CoMu is best
+
+get_mixed_logit(
+  base = c('dth', 'HPorp', 'CoMu'),
+  test = c('GL'),
+  random = c('zone', 'cruise.gen'),
+  species = 'All',
+  training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
+# GL is best
+
+### best model for HSeal ----
+HSeal_daily_mod <- 
+  glmer(PresAbs ~ dth + (1|zone) + (1|cruise.gen),
+      data = (daily_mbm_grid %>% filter(Species_code == 'HSeal')),
+      family = 'binomial')
+
+summary(HSeal_daily_mod)
+# 0.468 deviance explained
+
+# w. interspecies
+HSeal_daily_mod_interspecies <- 
+  glmer(PresAbs ~ dth + HPorp + CoMu + GL + (1|zone) + (1|cruise.gen),
+      data = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))),
+      family = 'binomial')
+
+summary(HSeal_daily_mod_interspecies)
+# 0.0617 dev. expl. (232.8 null; 177.38 residual)
+
+# steal the best formula
+form_HSeal <- formula(HSeal_daily_mod$formula)
+
+# Harbor Porpoise (logit) -------------------------------------------------------------
+
+# random variable selection (1)
+nb.HP00 <- glm(PresAbs ~ 1, family = 'binomial', data=daily_mbm_grid %>% filter(Species_code == 'HPorp'))
+nb.HP01 <- glmer(PresAbs ~ (1|zone), family = 'binomial', data=daily_mbm_grid %>% filter(Species_code == 'HPorp'))
+nb.HP02 <- glmer(PresAbs ~ (1|year), family = 'binomial', data=daily_mbm_grid %>% filter(Species_code == 'HPorp'))
+nb.HP03 <- glmer(PresAbs ~ (1|cruise.gen), family = 'binomial', data=daily_mbm_grid %>% filter(Species_code == 'HPorp'))
+
+# calculate AIC weights
+vec_AIC <- AIC(nb.HP00, nb.HP01, nb.HP02, nb.HP03)[,2]
+vec_AIC
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+#cleanup
+rm(nb.HP00, nb.HP01, nb.HP02, nb.HP03, vec_AIC, dAIC, AICw)
+
+# FS:1
+get_logit(
+  test = c('phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+  species = 'HPorp',
+  training = daily_mbm_grid)
+# temperature Standard Deviation is the best model
+
+# FS:2
+get_logit(
+  base = c('temp_sd'),
+  test = c('salt'),
+  species = 'HPorp',
+  training = daily_mbm_grid)
+# null is the best
+
+### interspecies effects HSeal ----
+
+get_logit(
+  base = c('temp_sd'),
+  test = c('CoMu', 'HSeal', 'GL'),
+  species = 'All',
+  training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
+# HSeal improves model but models did not converge
+
+get_logit(
+  base = c('temp_sd', 'HSeal'),
+  test = c('CoMu', 'GL'),
+  species = 'All',
+  training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
+# null is best
+
+### best model for HSeal ----
+HPorp_daily_mod <- 
+  glm(PresAbs ~ temp_sd,
+        data = (daily_mbm_grid %>% filter(Species_code == 'HPorp')),
+        family = 'binomial')
+
+summary(HPorp_daily_mod)
+# 0.468 deviance explained
+
+# w. interspecies
+HSeal_daily_mod_interspecies <- 
+  glmer(PresAbs ~ dth + HPorp + CoMu + GL + (1|zone) + (1|cruise.gen),
+        data = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))),
+        family = 'binomial')
+
+summary(HSeal_daily_mod_interspecies)
+# 0.013 dev. expl. (199.16 null; 196.43 residual)
+
+# steal the best formula
+form_HPorp <- formula(HPorp_daily_mod$formula)
+
+

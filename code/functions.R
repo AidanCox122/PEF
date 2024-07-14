@@ -349,7 +349,7 @@ get_gamm <-
           paste('Density~',
                 's(',
                 x,
-                ',k=3)+',
+                ',k=4)+',
                 paste(pull(random_out, output), collapse = '+'),
                 sep = '')
         
@@ -381,7 +381,7 @@ get_gamm <-
         output = c()) 
       # create a formula component for each element of base
       for(i in 1:length(base)) {
-        output <- tibble(output = paste0('s(', base[i], ',k=3)', collapse = '', sep = ''))
+        output <- tibble(output = paste0('s(', base[i], ',k=4)', collapse = '', sep = ''))
         base_out <- rbind(base_out, output)}
       
       # find AIC for each test model
@@ -390,7 +390,7 @@ get_gamm <-
           paste('Density~', paste0(pull(base_out, output), collapse = '', sep = '+'),
                 's(',
                 x,
-                ',k=3)+',
+                ',k=4)+',
                 paste(pull(random_out, output), collapse = '+'),
                 sep = '')
         
@@ -411,6 +411,111 @@ get_gamm <-
       models$null <- 
         AIC(m2)
     }
+    # calculate AIC weights
+    vec_AIC <- unlist(models)
+    dAIC <- vec_AIC - min(vec_AIC)
+    AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+    return(AICw)
+  }
+
+# Mixed Logistic Regression Weights -----------------------------------------
+
+get_mixed_logit <- 
+  # function will accept inputs where base is a vector of established predictors,
+  # and test will be a vector of predictors to include in the next iteration of forward selection
+  function(base = NULL, test, species = NULL, random = NULL, training = NULL) {
+    if(is.null(training)){
+      stop('NO TRAINING DATA PROVIDED')
+    }
+    if(is.null(species)){
+      warning('SPECIES CODE NOT PROVIDED, TRAINING DATA MAY CONTAIN MULTIPLE SPECIES')
+    }
+    # create a repository
+    models <- vector(
+      mode = 'list',
+      length = length(test)) %>% 
+      set_names(unique(test))
+    
+    data <-
+      training %>% 
+      filter(Species_code == species)
+    
+    # create formula components for random variables
+    # create a repository
+    random_out <- tibble(
+      output = c()) 
+    # create a formula component for each element of base
+    for(i in 1:length(random)) {
+      output <- tibble(output = paste0('(1|', random[i], ')', collapse = '', sep = ''))
+      random_out <- rbind(random_out, output)}
+    
+    # find AIC for each test model
+    if(is.null(base)){
+      # if base is null, find AIC for each test model
+      for(x in names(models)) {
+        form <- 
+          paste('PresAbs~',
+                x,
+                '+',
+                paste(pull(random_out, output), collapse = '+'),
+                sep = '')
+        
+        m1 <- 
+          glmer(formula = as.formula(form),
+              family = 'binomial',
+              data = data)
+        
+        models[x] <- 
+          AIC(m1)}
+      
+      # formula for null model
+      form2 <- 
+        paste0(
+          'PresAbs~1+',
+          paste(pull(random_out, output), collapse = '+')
+        )
+      # if base is null, compare to a model with only a random effect of individual
+      m2 <- 
+        glmer(formula = as.formula(form2),
+            family = 'binomial',
+            data = data)
+      # store the results in the models list
+      models$null <- 
+        AIC(m2)
+    } else{
+      # otherwise, if base is not null, build a new formula
+      # find AIC for each test model
+      for(x in names(models)) {
+        form <- paste('PresAbs~', paste0(base,
+                                         collapse = '',
+                                         sep = '+'),
+                      x,
+                      '+',
+                      paste(pull(random_out, output), collapse = '+'),
+                      sep = '')
+        
+        m1 <- 
+          glmer(formula = as.formula(form),
+              family = 'binomial',
+              data = data)
+        
+        models[x] <- 
+          AIC(m1)}
+      
+      form2 <- 
+        paste0('PresAbs~',
+              paste0(base,
+                    '+',
+                    paste(pull(random_out, output), collapse = '+'),
+                    collapse = '+'))
+      m2 <- 
+        glmer(formula = as.formula(form2),
+            family = 'binomial',
+            data = data)
+      models$null <- 
+        AIC(m2)
+    }
+    
     # calculate AIC weights
     vec_AIC <- unlist(models)
     dAIC <- vec_AIC - min(vec_AIC)
