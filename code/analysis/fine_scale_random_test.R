@@ -106,6 +106,9 @@ dAIC <- vec_AIC - min(vec_AIC)
 AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
 AICw
 
+#cleanup 
+rm(nb.GL00, nb.GL01, nb.GL02, nb.GL03, vec_AIC, dAIC, AICw)
+
 ## zone is the best 
 
 # random variable selection (2)
@@ -123,6 +126,9 @@ AICw
 
 ## cruise number is the best 
 
+#cleanup 
+rm(nb.GL00, nb.GL01, nb.GL02, nb.GL03, vec_AIC, dAIC, AICw)
+
 # random variable selection (3)
 nb.GL00 <- gam(Density ~ 1, family = nb, data=daily_mbm_grid %>% filter(Species_code == 'GL'))
 nb.GL01 <- gam(Density ~ s(zone, bs="re") + s(cruise.gen, bs="re"), family = nb, data=daily_mbm_grid %>% filter(Species_code == 'GL'))
@@ -137,10 +143,12 @@ AICw
 
 ## both models perform equally, sticking with previous iteration 
 
+#cleanup 
+rm(nb.GL00, nb.GL01, nb.GL02, vec_AIC, dAIC, AICw)
 
 # forward selection 1
 get_gamm(
-    test = c('tcur', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
+    test = c('phyto', 'sst', 'temp_sd', 'salt', 'dth'),
     random = c('zone', 'cruise.gen'),
     species = 'GL',
     training = daily_mbm_grid)
@@ -177,8 +185,11 @@ get_gamm(
 
 # null is best
 
+
+## best model for GL -------------------------------------------------------
+
 GL_test_mod <- 
-  gam(Density ~ s(salt,k=4)+s(zone, bs='re')+s(cruise.gen, bs='re'),
+  gam(Density ~ s(salt,k=3)+s(zone, bs='re')+s(cruise.gen, bs='re'),
       data = (daily_mbm_grid %>% filter(Species_code == 'GL')),
       family = nb)
 
@@ -187,7 +198,7 @@ summary(GL_test_mod)
 
 # w. interspecies 
 GL_test_mod_interspecies <- 
-  gam(GL ~ s(salt,k=4)+s(CoMu,k=3)+s(zone,bs='re')+s(cruise.gen,bs='re'),
+  gam(GL ~ s(salt,k=3)+s(CoMu,k=3)+s(zone,bs='re')+s(cruise.gen,bs='re'),
       data = interspeciesComp,
       family = nb)
 
@@ -387,23 +398,7 @@ get_mixed_logit(
   random = c('zone', 'cruise.gen'),
   species = 'All',
   training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
-# HPorp improves model
-
-get_mixed_logit(
-  base = c('dth', 'HPorp'),
-  test = c('CoMu', 'GL'),
-  random = c('zone', 'cruise.gen'),
-  species = 'All',
-  training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
-# CoMu is best
-
-get_mixed_logit(
-  base = c('dth', 'HPorp', 'CoMu'),
-  test = c('GL'),
-  random = c('zone', 'cruise.gen'),
-  species = 'All',
-  training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
-# GL is best
+# null is best
 
 ### best model for HSeal ----
 HSeal_daily_mod <- 
@@ -414,17 +409,8 @@ HSeal_daily_mod <-
 summary(HSeal_daily_mod)
 # 0.468 deviance explained
 
-# w. interspecies
-HSeal_daily_mod_interspecies <- 
-  glmer(PresAbs ~ dth + HPorp + CoMu + GL + (1|zone) + (1|cruise.gen),
-      data = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))),
-      family = 'binomial')
-
-summary(HSeal_daily_mod_interspecies)
-# 0.0617 dev. expl. (232.8 null; 177.38 residual)
-
 # steal the best formula
-form_HSeal <- formula(HSeal_daily_mod$formula)
+form_HSeal <- formula(HSeal_daily_mod)
 
 # Harbor Porpoise (logit) -------------------------------------------------------------
 
@@ -494,6 +480,198 @@ summary(HSeal_daily_mod_interspecies)
 # 0.013 dev. expl. (199.16 null; 196.43 residual)
 
 # steal the best formula
-form_HPorp <- formula(HPorp_daily_mod$formula)
+form_HPorp <- formula(HPorp_daily_mod)
+
+# monte-carlo validation --------------------------------------------------
+
+# this section of code performs monte:carlo validation on fine-scale models trained above
+# we run 500 replications and resample 75% of data for training and 25% for testing
+# resampling is stratefied by year and cruise day
+
+# create an index of cruise dates to survey from
+allrows <- 1:nrow(cruises_ocean_time_all)
+
+# list the rows corresponding to each cruise #
+rows_cruise1 <- c(1,7,13,18,25)
+rows_cruise2 <- c(2,8,14,19,26)
+rows_cruise3 <- c(3,9,15,20,27)
+rows_cruise4 <- c(4,10,16,21,28)
+rows_cruise5 <- c(5,11,17,22)
+rows_cruise6 <- c(6,12,18,23)
+rows_cruise7 <- c(24)
+
+seabird.eval <- data.frame()
+seabird.coef <- data.frame()
+
+marmam.eval <- data.frame()
+marmam.coef <- data.frame()
+
+t1 <- Sys.time()
+
+for (i in 1:500) {
+  # step 1: compile the training and testing data
+  set.seed(i)
+  strat.c1 <- sample(rows_cruise1, replace = F, size = 0.75*length(rows_cruise1))
+  strat.c2 <- sample(rows_cruise2, replace = F, size = 0.75*length(rows_cruise2))
+  strat.c3 <- sample(rows_cruise3, replace = F, size = 0.75*length(rows_cruise3))
+  strat.c4 <- sample(rows_cruise4, replace = F, size = 0.75*length(rows_cruise4))
+  strat.c5 <- sample(rows_cruise5, replace = F, size = 0.75*length(rows_cruise5))
+  strat.c6 <- sample(rows_cruise6, replace = F, size = 0.75*length(rows_cruise6))
+  strat.c7 <- rows_cruise7
+  
+  train_rows <- c(strat.c1, strat.c2, strat.c3, strat.c4, strat.c5, strat.c6, strat.c7)
+  rm(strat.c1, strat.c2, strat.c3, strat.c4, strat.c5, strat.c6, strat.c7)
+  test_rows <- allrows[-train_rows]
+  
+  # partition env. and species data
+  train <- 
+    daily_mbm_grid %>% 
+    filter(Date %in% 
+             (cruises_ocean_time_all[train_rows,] %>%
+                dplyr::select(-c(ocean_time)) %>% 
+                pull(Date)))
+  test <- 
+    daily_mbm_grid %>% 
+    filter(Date %in% 
+             (cruises_ocean_time_all[test_rows,] %>%
+                dplyr::select(-c(ocean_time)) %>% 
+                pull(Date)))
+  
+  print("Finished Step 1")
+  # step 2: add predicted values NOTE: SELECT THE DESIRED MODEL ON LINES 3327:3330 AND 3335:3338
+  GL_train <- train %>% filter(Species_code == "GL")
+  GL_test <- test %>% filter(Species_code == "GL")
+  nb.GL <- gam(formula = form_GL,
+               data = GL_train,
+               family = nb)
+  GL_test$predicted <- predict(nb.GL, newdata = GL_test, type = "response")
+  
+  CM_train <- train %>% filter(Species_code == "CoMu")
+  CM_test <- test %>% filter(Species_code == "CoMu")
+  nb.CM <- gam(formula = form_CM,
+               data = CM_train,
+               family = nb)
+  CM_test$predicted <- predict(nb.CM, newdata = CM_test, type = "response")
+  
+  HPorp_train <- train %>% filter(Species_code == "HPorp")
+  HPorp_test <- test %>% filter(Species_code == "HPorp")
+  glm.HP <- glm(formula = form_HPorp,
+                data = HPorp_train,
+                family = 'binomial')
+  glm0.0 <- update(glm.HP, . ~ 1)
+  HPorp_test$predicted <- predict(glm.HP, newdata = HPorp_test, type = "response")
+  
+  HSeal_train <- train %>% filter(Species_code == "HSeal")
+  HSeal_test <- test %>% filter(Species_code == "HSeal")
+  glm.HS <- glmer(formula = form_HSeal, data= HSeal_train, family = "binomial")
+  glm0 <- update(glm.HS, . ~ 1 + (1 | zone) + (1 | cruise.gen))
+  HSeal_test$predicted <- predict(glm.HS, newdata = HSeal_test, type = "response")
+  print("Finished Step 2")
+  # step 3: assess the accuracy of the models
+  # abundance models
+  ## calculate summary statistics
+  GL.mi <- min(((GL_test$Density - GL_test$predicted)/GL_test$Density) * 100, na.rm = TRUE)
+  GL.me <- median(((GL_test$Density - GL_test$predicted)/GL_test$Density) * 100, na.rm = TRUE)
+  GL.ma <- max(((GL_test$Density - GL_test$predicted)/GL_test$Density) * 100, na.rm = TRUE)
+  GL.rsq <- summary(nb.GL)$r.sq
+  GL.dex <- summary(nb.GL)$dev.expl
+  
+  CM.mi <- min(((CM_test$Density - CM_test$predicted)/CM_test$Density) * 100, na.rm = TRUE)
+  CM.me <- median(((CM_test$Density - CM_test$predicted)/CM_test$Density) * 100, na.rm = TRUE)
+  CM.ma <- max(((CM_test$Density - CM_test$predicted)/CM_test$Density) * 100, na.rm = TRUE)
+  CM.rsq <- summary(nb.CM)$r.sq
+  CM.dex <- summary(nb.CM)$dev.expl
+  
+  data.eval <- tibble(
+    Trial = c(i,i), 
+    Species_code = c("GL", "CoMu"), 
+    min.pe = c(GL.mi, CM.mi), 
+    med.pe = c(GL.me, CM.me), 
+    max.pe = c(GL.ma, CM.ma), 
+    r.squ = c(GL.rsq, CM.rsq), 
+    dev.ex = c(GL.dex, CM.dex),
+    test = c(nrow(GL_test), nrow(CM_test)))
+  
+  coef <- nb.GL$coefficients
+  data.cov <- stack(coef)
+  data.cov$iter <- i
+  data.cov$Species_code <- "GL"
+  coef <- nb.CM$coefficients
+  coef <- stack(coef)
+  coef$iter <- i
+  coef$Species_code <- "CM"
+  data.cov <- rbind(data.cov, coef)
+  
+  seabird.eval <- rbind(seabird.eval, data.eval)
+  seabird.coef <- rbind(seabird.coef, data.cov)
+  rm(GL.mi, CM.mi, GL.me, CM.me, GL.ma, CM.ma, GL.rsq, CM.rsq, GL.dex, CM.dex, coef, data.cov)
+  print("Finished Step 3a")
+  
+  # presence absence models
+  # calculate area under receiver opperator curve
+  HS.t <- ci.auc(HSeal_test$PresAbs, HSeal_test$predicted)
+  HP.t <- ci.auc(HPorp_test$PresAbs, HPorp_test$predicted)
+  
+  # calculate log liklihood
+  HS.rsq <- 1-logLik(glm.HS)/logLik(glm0)
+  HP.rsq <- 1-logLik(glm.HP)/logLik(glm0.0)
+  
+  # calculate percentage of deviance explained
+  HS.dex <- 1 - (deviance(glm.HS)/deviance(glm0))
+  HP.dex <- 1 - (summary(glm.HP)$deviance/ summary(glm.HP)$null.deviance)
+  
+  data.eval <- data.frame(
+    Trial = c(i,i),
+    AUC = c(HS.t[2], HP.t[2]),
+    L.CI = c(HS.t[1], HP.t[1]),
+    H.CI = c(HS.t[3], HP.t[3]),
+    r.sq = c(HS.rsq, HP.rsq),
+    dev.ex = c(HS.dex, HP.dex),
+    Species_code = c("HSeal", "HPorp")
+    
+  )
+  
+  coef <- fixef(glm.HS)
+  data.cov <- stack(coef)
+  data.cov$iter <- i
+  data.cov$Species_code <- "HS"
+  coef <- glm.HP$coefficients
+  coef <- stack(coef)
+  coef$iter <- i
+  coef$Species_code <- "HP"
+  data.cov <- rbind(data.cov, coef)
+  
+  marmam.eval <- rbind(marmam.eval, data.eval)
+  marmam.coef <- rbind(marmam.coef, data.cov)
+  rm(HS.t, HP.t, HS.rsq, HP.rsq, HS.dex, HP.dex, data.eval, data.cov, coef)
+  print("Finished Step 3b")
+  t2 <- Sys.time()
+  print(i)
+}
+
+t2 <- Sys.time()
+
+t2 - t1
+
+# evaluate CV results for seabirds
+seabird.eval %>% 
+  group_by(Species_code) %>% 
+  summarize(
+    Avg.P.Err = mean(med.pe, na.rm = T),
+    SD.P.Err = sd(med.pe, na.rm = T),
+    Avg.R2 = mean(r.squ, na.rm = T),
+    Avg.DvEx = mean(dev.ex, na.rm = T),
+    SD.DevEx = sd(dev.ex, na.rm = T)) %>% View()
+
+# evaluate CV results for mammals
+marmam.eval %>% 
+  group_by(Species_code) %>% 
+  summarize(
+    Avg.AUC = mean(AUC, na.rm = T),
+    SD.AUC = sd(AUC, na.rm = T),
+    Avg.R2 = mean(r.sq, na.rm = T),
+    Avg.DvEx = mean(dev.ex, na.rm = T),
+    SD.DevEx = sd(dev.ex, na.rm = T)) %>% View()
+
 
 

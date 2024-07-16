@@ -38,6 +38,7 @@ cruises_ocean_time_all <- data.frame(
 
 # create a tibble with scaling information
 scaled_env <- 
+  daily_mbm_grid <- 
   env_grid %>% 
   # add delta-tide-height variable
   left_join(dth, by = 'Date') %>% 
@@ -46,11 +47,17 @@ scaled_env <-
   # change zone to a factor
   mutate(zone = factor(zone)) %>% 
   # select variables for model
-  dplyr::select(Date, zone, bathy:salt, dth) %>% 
+  dplyr::select(Date, zone, bathy:salt,dth) %>% 
   # find average value in each zone on each cruise date
   group_by(Date, zone) %>% 
+  # take the mean of environmental conditions in each zone on each cruise
   summarize_if(is.numeric, mean, na.rm = T) %>%  # n = 1644
   ungroup() %>% 
+  right_join(
+    mbm_data %>%
+      # change zone to factor in mbm_data to match env_grid
+      mutate(zone = factor(zone)),
+    by = c('Date', 'zone')) %>%
   # lots of NAs from years prior to 2017
   filter(!is.na(bathy)) %>% # n = 672
   # scale predictors
@@ -100,38 +107,38 @@ interannual_mbm_grid <-
   # lots of NAs from years prior to 2017
   filter(!is.na(bathy)) %>% # n = 672
   mutate(year = lubridate::year(Date)) %>% 
-  # scale predictors
-  mutate_at(c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt'), base::scale) %>%
   # calculate average conditions in each zone in each year
   group_by(year, zone, Species_code) %>% 
   summarize_if(is.numeric, mean, na.rm = T) %>% 
   ungroup() %>% 
-  mutate(countInt = round(Count,0))
+  mutate(countInt = round(Count,0)) %>% 
+  # scale predictors
+  mutate_at(c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt'), base::scale)
 
 # train best model for:
 ## GL
 GL_interann_mod <- 
-  gam(formula = countInt~ s(bathy,k=3)+s(dist,k=3)+s(phyto,k=3)+s(temp_sd,k=3)+s(sst,k=3),
+  gam(formula = countInt~ s(bathy,k=3)+s(dist,k=3)+s(salt,k=4)+s(phyto,k=4)+s(temp_sd,k=4),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'GL')))
 ## CM
 CoMu_interann_mod <- 
-  gam(formula = countInt~s(dist,k=3)+s(bathy,k=3)+s(salt,k=3)+s(phyto,k=3)+s(temp_sd,k=3)+s(sst,k=3),
+  gam(formula = countInt~s(dist,k=3)+s(phyto,k=4)+s(temp_sd,k=4)+s(salt,k=4)+s(sst,k=4)+s(bathy,k=3),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu')))
 
 ## HSeal
 HSeal_interann_mod <- 
-  gam(formula = countInt~ s(bathy,k=3)+s(phyto,k=3),
+  gam(formula = countInt~ countInt~ s(bathy,k=3)+s(phyto,k=4),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'HSeal')))
 
 ## HPorp
 HPorp_interann_mod <- 
-  gam(formula = countInt~ s(sst, k=3)+s(bathy,k=3),
+  gam(formula = countInt~ s(bathy,k=3)+ s(sst,k=4) + s(salt, k=4),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'HPorp')))
@@ -171,7 +178,7 @@ daily_mbm_grid <-
   left_join(
     (cruises_ocean_time_all %>% 
        dplyr::select(Date, cruise.gen)),
-    by = 'Date')
+    by = 'Date') 
 
 # remove attributes attached to each variable by scale function
 daily_mbm_grid <-
@@ -183,30 +190,31 @@ daily_mbm_grid <-
 # train best fine-scale models for:
 ## GL:
 GL_daily_mod <- 
-  gam(Density ~ s(bathy,k=3)+s(dist, k=3)+s(sst,k=3),
+  gam(Density ~ s(salt,k=3)+s(zone, bs='re')+s(cruise.gen, bs='re'),
       data = (daily_mbm_grid %>% filter(Species_code == 'GL')),
       family = nb)
 
 ## CM:
 CoMu_daily_mod <- 
-  gam(Density ~ s(dist,k=3)+s(dth, k=3)+s(bathy,k=3)+s(phyto,k=3),
+  gam(Density ~ s(dth, k = 3) + s(phyto, k = 3) + s(zone, bs = "re") + 
+        s(cruise.gen, bs = "re"),
       data = (daily_mbm_grid %>% filter(Species_code == 'CoMu')),
       family = nb)
 
 ## HSeal:
 HSeal_daily_mod <- 
-  glm(PresAbs ~ bathy + dist + dth,
+  glmer(PresAbs ~ dth + (1 | zone) + (1 | cruise.gen),
       data = (daily_mbm_grid %>% filter(Species_code == 'HSeal')),
       family = 'binomial')
 
 # HPorp
 HPorp_daily_mod <- 
-  glm(PresAbs ~ dist,
+  glm(PresAbs ~ temp_sd,
       data = (daily_mbm_grid %>% filter(Species_code == 'HPorp')),
       family = 'binomial')
 
 
-# Individual Effect Curves ------------------------------------------------
+# Coarse-Model Individual Effect Curves ------------------------------------------------
 
 # this section creates effect curves for each variable in our species distribution models
 
@@ -1042,6 +1050,48 @@ for (x in names(coarse_plots)) {
          height = 2.98,
          units = 'in')
   print(paste('Done with', x))}
+
+
+# Fine-Scale Individual Effect Curves -------------------------------------
+
+
+## Glaucous-winged Gull -----------------------------------------------------------
+
+# salt
+GLFine_salt <- 
+    data.frame(
+      salt = seq(-4.6,1.3, 0.075) %>%
+        # number of zones
+        rep(times = 6) %>% 
+        # number of cruises
+        rep(times = 7),
+      zone = rep(1:6, each = 79) %>% 
+        rep(times = 7),
+      cruise.gen = rep(1:7, each = 474))
+
+GLFine2_salt <- 
+  cbind(GLFine_salt,
+        predict(GL_daily_mod, newdata = GLFine_salt, type = "response", se = TRUE))
+
+GLFine2_salt <- within(GLFine2_salt, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)}) %>% 
+  mutate(countInt = round(fit, digits = 0))
+
+GLfine_salt_plot <- 
+  GLFine2_salt %>%
+  unscale('salt', .) %>%
+  filter(cruise.gen == 1 | cruise.gen == 6) %>% 
+  ggplot() + 
+  # plot effect for a low abundance cruise
+  geom_ribbon(aes(x = salt, y = countInt, ymin = LL, ymax = UL, fill = factor(zone)), alpha = 0.1) + 
+  geom_line(aes(x = salt, y = fit, color = factor(zone))) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('salt', .) %>% filter(cruise.gen == 1 | cruise.gen == 6)), aes(x = salt, y = Count), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  facet_wrap(~cruise.gen) +
+  xlab("Salinity (PPT)") +
+  ylab("Glaucous Gull Count") +
+  theme_classic() # gulls are more common in regions of shallow water
+
 
 # Prediction Spaces -------------------------------------------------------
 
