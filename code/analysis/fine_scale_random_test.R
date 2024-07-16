@@ -241,6 +241,7 @@ dAIC <- vec_AIC - min(vec_AIC)
 AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
 AICw
 ## cruise.gen is the next best
+# daily_mbm_grid %>% filter(Species_code == 'CoMu') %>% group_by(cruise.gen) %>% summarize(meanCount = mean(Count))
 
 #cleanup
 rm(nb.CM00, nb.CM01, nb.CM02, nb.CM03, vec_AIC, dAIC, AICw)
@@ -305,12 +306,12 @@ get_gamm(
 
 ### best model for CoMu ----
 CoMu_test_mod <- 
-  gam(Density ~ s(dth,k=3)+s(phyto,k=3)+s(zone,bs='re')+s(cruise.gen,bs='re'),
+  gam(Density ~ s(dth,k=4)+s(phyto,k=4)+s(zone,bs='re')+s(cruise.gen,bs='re'),
       data = (daily_mbm_grid %>% filter(Species_code == 'CoMu')),
       family = nb)
 
 summary(CoMu_test_mod)
-#  45.7% deviance explained
+#  43.8% deviance explained
 
 # steal the best formula
 form_CM <- as.formula(summary(CoMu_test_mod)$formula)
@@ -376,7 +377,7 @@ rm(nb.HS00, nb.HS01, vec_AIC, dAIC, AICw)
 # FS:1
 get_mixed_logit(
   test = c('phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-  random = c('zone', 'cruise.gen'),
+  random = c('zone'),
   species = 'HSeal',
   training = daily_mbm_grid)
 # dth is the best model
@@ -385,24 +386,24 @@ get_mixed_logit(
 get_mixed_logit(
   base = c('dth'),
   test = c('phyto', 'sst', 'temp_sd', 'salt'),
-  random = c('zone', 'cruise.gen'),
+  random = c('zone'),
   species = 'HSeal',
   training = daily_mbm_grid)
-# phyto is best but not statistically significant
+# null is best
 
 ### interspecies effects HSeal ----
 
 get_mixed_logit(
   base = c('dth'),
   test = c('CoMu', 'HPorp', 'GL'),
-  random = c('zone', 'cruise.gen'),
+  random = c('zone'),
   species = 'All',
   training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
 # null is best
 
 ### best model for HSeal ----
 HSeal_daily_mod <- 
-  glmer(PresAbs ~ dth + (1|zone) + (1|cruise.gen),
+  glmer(PresAbs ~ dth + (1|zone),
       data = (daily_mbm_grid %>% filter(Species_code == 'HSeal')),
       family = 'binomial')
 
@@ -461,7 +462,7 @@ get_logit(
   training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
 # null is best
 
-### best model for HSeal ----
+### best model for HPorp ----
 HPorp_daily_mod <- 
   glm(PresAbs ~ temp_sd,
         data = (daily_mbm_grid %>% filter(Species_code == 'HPorp')),
@@ -564,7 +565,7 @@ for (i in 1:500) {
   HSeal_train <- train %>% filter(Species_code == "HSeal")
   HSeal_test <- test %>% filter(Species_code == "HSeal")
   glm.HS <- glmer(formula = form_HSeal, data= HSeal_train, family = "binomial")
-  glm0 <- update(glm.HS, . ~ 1 + (1 | zone) + (1 | cruise.gen))
+  glm0 <- update(glm.HS, . ~ 1 + (1 | zone))
   HSeal_test$predicted <- predict(glm.HS, newdata = HSeal_test, type = "response")
   print("Finished Step 2")
   # step 3: assess the accuracy of the models
@@ -667,7 +668,9 @@ seabird.eval %>%
 marmam.eval %>% 
   group_by(Species_code) %>% 
   summarize(
+    L.Lim = mean(L.CI, na.rm = T),
     Avg.AUC = mean(AUC, na.rm = T),
+    H.Lim = mean(H.CI, na.rm = T),
     SD.AUC = sd(AUC, na.rm = T),
     Avg.R2 = mean(r.sq, na.rm = T),
     Avg.DvEx = mean(dev.ex, na.rm = T),

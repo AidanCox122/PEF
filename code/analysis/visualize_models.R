@@ -196,14 +196,14 @@ GL_daily_mod <-
 
 ## CM:
 CoMu_daily_mod <- 
-  gam(Density ~ s(dth, k = 3) + s(phyto, k = 3) + s(zone, bs = "re") + 
+  gam(Density ~ s(dth, k = 4) + s(phyto, k = 4) + s(zone, bs = "re") + 
         s(cruise.gen, bs = "re"),
       data = (daily_mbm_grid %>% filter(Species_code == 'CoMu')),
       family = nb)
 
 ## HSeal:
 HSeal_daily_mod <- 
-  glmer(PresAbs ~ dth + (1 | zone) + (1 | cruise.gen),
+  glmer(PresAbs ~ dth + (1 | zone),
       data = (daily_mbm_grid %>% filter(Species_code == 'HSeal')),
       family = 'binomial')
 
@@ -381,89 +381,42 @@ GL_coarse_tempsd_plot <-
 
 
 ### fine-scale --------------------------------------------------------------
-# bathy, dist, sst
+# salt
 
-# bathymetry
-GLFine_bathy <- 
-  with(
-    daily_mbm_grid,
-    data.frame(
-      bathy = seq(-2,2, 0.025),
-      dist = mean(dist),
-      sst = mean(sst)))
+# salt
+GLFine_salt <- 
+  data.frame(
+    salt = seq(-4.6,1.3, 0.075) %>%
+      # number of zones
+      rep(times = 6) %>% 
+      # number of cruises
+      rep(times = 7),
+    zone = rep(1:6, each = 79) %>% 
+      rep(times = 7),
+    cruise.gen = rep(1:7, each = 474))
 
-GLFine2_bathy <- 
-  cbind(GLFine_bathy,
-        predict(GL_daily_mod, newdata = GLFine_bathy, type = "response", se = TRUE))
+GLFine2_salt <- 
+  cbind(GLFine_salt,
+        predict(GL_daily_mod, newdata = GLFine_salt, type = "response", se = TRUE))
 
-GLFine2_bathy <- within(GLFine2_bathy, {
+GLFine2_salt <- within(GLFine2_salt, {
   LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)})
+  UL <- fit + (1.96 * se.fit)}) %>% 
+  mutate(countInt = round(fit, digits = 0))
 
-GLFine2_bathy %>% 
-  unscale('bathy', .) %>% 
+GLfine_salt_plot <- 
+  GLFine2_salt %>%
+  unscale('salt', .) %>%
+  filter(cruise.gen == 1 | cruise.gen == 6) %>% 
   ggplot() + 
-  geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = bathy, y = fit)) +
-  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('bathy', .)), aes(x = bathy, y = Density), alpha = 0.5) +
-  xlab("Bathymetry (m)") +
-  ylab("Glaucous Gull Density") +
-  theme_classic() # gulls are more common in regions of shallower water
-
-# distance from shore
-GLFine_dist <- 
-  with(
-    daily_mbm_grid,
-    data.frame(
-      bathy = mean(bathy),
-      dist = seq(-1,2.5, 0.025),
-      sst = mean(sst)))
-
-GLFine2_dist <- 
-  cbind(GLFine_dist,
-        predict(GL_daily_mod, newdata = GLFine_dist, type = "response", se = TRUE))
-
-GLFine2_dist <- within(GLFine2_dist, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)})
-
-GLFine2_dist %>% 
-  unscale('dist', .) %>% 
-  ggplot() + 
-  geom_ribbon(aes(x = dist/1000, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = dist/1000, y = fit)) +
-  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('dist', .)), aes(x = dist/1000, y = Density), alpha = 0.5) +
-  xlab("Distance from Shore (km)") +
-  ylab("Glaucous Gull Density") +
-  theme_classic() # gulls are more common farther from shore
-
-# sea-surface temperature
-GLFine_sst <- 
-  with(
-    daily_mbm_grid,
-    data.frame(
-      bathy = mean(bathy),
-      dist = mean(dist),
-      sst = seq(-2,3, 0.025)))
-
-GLFine2_sst <- 
-  cbind(GLFine_sst,
-        predict(GL_daily_mod, newdata = GLFine_sst, type = "response", se = TRUE))
-
-GLFine2_sst <- within(GLFine2_sst, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)})
-
-GLFine2_sst %>% 
-  unscale('sst', .) %>% 
-  ggplot() + 
-  geom_ribbon(aes(x = sst, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = sst, y = fit)) +
-  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('sst', .)), aes(x = sst, y = Density, color = factor(zone)), alpha = 0.5) +
-  xlab("Sea-Surface Temperature (ºC)") +
-  ylab("Glaucous Gull Density") +
-  theme_classic() # gulls are more common at lower sea-surface temperature values
-
+  # plot effect for a low abundance cruise
+  geom_ribbon(aes(x = salt, y = countInt, ymin = LL, ymax = UL, fill = factor(zone)), alpha = 0.1) + 
+  geom_line(aes(x = salt, y = fit, color = factor(zone))) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('salt', .) %>% filter(cruise.gen == 1 | cruise.gen == 6)), aes(x = salt, y = Count), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  facet_wrap(~cruise.gen) +
+  xlab("Salinity (PPT)") +
+  ylab("Glaucous Gull Count") +
+  theme_classic() # gulls are more common in regions of shallow water
 
 ## Common Murre ------------------------------------------------------------
 
@@ -663,47 +616,27 @@ CM_coarse_sst_plot <-
   ylab("Common Murre Count") +
   theme_classic() # gulls are more common at lower sea-surface temperature values
 
+# quick summary of average dth in study area
+# daily_mbm_grid %>% unscale('dth', .) %>% filter(Species_code == 'CoMu') %>% pull(dth) %>% mean()
 
 ### fine-scale models -----------------------------------------------------
-# dist, dth, bathy, phyto
-
-# distance from shore
-CMFine_dist <- 
-  with(
-    daily_mbm_grid,
-    data.frame(
-      dist = seq(-1,2.5, 0.025),
-      dth = mean(dth),
-      bathy = mean(bathy),
-      phyto = mean(phyto)))
-
-CMFine2_dist <- 
-  cbind(CMFine_dist,
-        predict(CoMu_daily_mod, newdata = CMFine_dist, type = "response", se = TRUE))
-
-CMFine2_dist <- within(CMFine2_dist, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)})
-
-CMFine2_dist %>% 
-  unscale('dist', .) %>% 
-  ggplot() + 
-  geom_ribbon(aes(x = dist/1000, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = dist/1000, y = fit)) +
-  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('dist', .)), aes(x = dist/1000, y = Density), alpha = 0.5) +
-  xlab("Distance from Shore (km)") +
-  ylab("Common Murre Density") +
-  theme_classic() # murres are more common farther from shore
+# dth, phyto
 
 # delta-tide height
 CMFine_dth <- 
   with(
     daily_mbm_grid,
     data.frame(
-      dist = mean(dist),
-      dth = seq(-3,2, 0.025),
-      bathy = mean(bathy),
-      phyto = mean(phyto)))
+      dth = seq(-3,2, 0.05) %>% 
+        # number of transects
+        rep(times = 6) %>% 
+        # number of cruises,
+        rep(times = 7),
+      phyto = mean(phyto),
+      zone = rep(1:6, each = 101) %>% 
+        # number of cruises
+        rep(times = 7),
+      cruise.gen = rep(1:7, each = 606)))
 
 CMFine2_dth <- 
   cbind(CMFine_dth,
@@ -711,55 +644,33 @@ CMFine2_dth <-
 
 CMFine2_dth <- within(CMFine2_dth, {
   LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)})
+  UL <- fit + (1.96 * se.fit)}) %>% 
+  mutate(countInt = round(fit, digits = 0))
 
 CMFine2_dth %>% 
   unscale('dth', .) %>% 
-  ggplot() + 
-  geom_ribbon(aes(x = dth, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = dth, y = fit)) +
-  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('dth', .)), aes(x = dth, y = Density, color = zone), alpha = 0.5) +
+  ggplot() +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('dth', .)), aes(x = dth, y = Density), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_ribbon(aes(x = dth, y = fit, ymin = LL, ymax = UL, fill = factor(zone)), alpha = 0.3) + 
+  geom_line(aes(x = dth, y = fit, color = factor(zone))) +
   xlab("Delta Tide Height (m)") +
   ylab("Common Murre Density") +
   theme_classic() # murres are more common at intermediate tides
-
-# bathymetry
-CMFine_bathy <- 
-  with(
-    daily_mbm_grid,
-    data.frame(
-      dist = mean(dist),
-      dth = mean(dth),
-      bathy = seq(-2,2, 0.025),
-      phyto = mean(phyto)))
-
-CMFine2_bathy <- 
-  cbind(CMFine_bathy,
-        predict(CoMu_daily_mod, newdata = CMFine_bathy, type = "response", se = TRUE))
-
-CMFine2_bathy <- within(CMFine2_bathy, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)})
-
-CMFine2_bathy %>% 
-  unscale('bathy', .) %>% 
-  ggplot() + 
-  geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = bathy, y = fit)) +
-  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('bathy', .)), aes(x = bathy, y = Density), alpha = 0.5) +
-  xlab("Bathymetry (m)") +
-  ylab("Common Murre Density") +
-  theme_classic() # murres are more common in deeper water
 
 # phytoplankton
 CMFine_phyto <- 
   with(
     daily_mbm_grid,
     data.frame(
-      dist = mean(dist),
       dth = mean(dth),
-      bathy = mean(bathy),
-      phyto = seq(-2,4, 0.025)))
+      phyto = seq(-2,4, 0.05) %>%
+        # number of zones
+        rep(times = 6) %>% 
+        # number of cruises
+        rep(times = 7),
+      zone = rep(1:6, each = 121) %>% 
+        rep(times = 7),
+      cruise.gen = rep(1:7, each = 726)))
 
 CMFine2_phyto <- 
   cbind(CMFine_phyto,
@@ -767,18 +678,22 @@ CMFine2_phyto <-
 
 CMFine2_phyto <- within(CMFine2_phyto, {
   LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)})
+  UL <- fit + (1.96 * se.fit)}) %>% 
+  mutate(countInt = round(fit, digits = 0))
 
 CMFine2_phyto %>% 
   unscale('phyto', .) %>% 
-  ggplot() + 
-  geom_ribbon(aes(x = phyto, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = phyto, y = fit)) +
-  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('phyto', .)), aes(x = phyto, y = Density), alpha = 0.5) +
+  ggplot() +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('phyto', .)), aes(x = phyto, y = Density), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_ribbon(aes(x = phyto, y = fit, ymin = LL, ymax = UL, fill = factor(zone)), alpha = 0.2) + 
+  geom_line(aes(x = phyto, y = fit, color = factor(zone))) +
   xlab("Phytoplankton Concentration (µmol/L)") +
   ylab("Common Murre Density") +
   theme_classic() # murres are more common in more productive waters
 
+# quick summary of average dth in study area
+daily_mbm_grid %>% unscale('phyto', .) %>% filter(Species_code == 'CoMu') %>% pull(phyto) %>% mean()
+daily_mbm_grid %>% unscale('phyto', .) %>% filter(Species_code == 'CoMu') %>% pull(phyto) %>% sd()
 
 ## Harbor Seals ------------------------------------------------------------
 
@@ -847,89 +762,35 @@ HScoarse2_phyto %>%
 
 ### fine-scale models -------------------------------------------------------
 
-# bathy, dist, dth
-
-# bathymetry
-HSFine_bathy <- 
-  with(
-    daily_mbm_grid,
-    data.frame(
-      dist = mean(dist),
-      dth = mean(dth),
-      bathy = seq(-2,2, 0.025)))
-
-HSFine2_bathy <- 
-  cbind(HSFine_bathy,
-        predict(HSeal_daily_mod, newdata = HSFine_bathy, type = "response", se = TRUE))
-
-HSFine2_bathy <- within(HSFine2_bathy, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)})
-
-ggplot(HSFine2_bathy) + 
-  geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = bathy, y = fit)) +
-  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% group_by(year, zone, bathy) %>% summarize(prob = mean(PresAbs))), aes(x = bathy, y = prob, color = factor(zone)), alpha = 0.5) +
-  xlab("Scaled Bathymetry") +
-  ylab("Probability of Harbor Seal Sighting") +
-  theme_classic()
-
-# distance from shore
-HSFine_dist <- 
-  with(
-    daily_mbm_grid,
-    data.frame(
-      dist = seq(-1,2, 0.025),
-      dth = mean(dth),
-      bathy = mean(bathy)))
-
-HSFine2_dist <- 
-  cbind(HSFine_dist,
-        predict(HSeal_daily_mod, newdata = HSFine_dist, type = "response", se = TRUE))
-
-HSFine2_dist <- within(HSFine2_dist, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)})
-
-ggplot(HSFine2_dist) + 
-  geom_ribbon(aes(x = dist, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = dist, y = fit)) +
-  geom_point(data = (daily_mbm_grid %>%
-                       filter(Species_code == 'HSeal') %>%
-                       group_by(year, zone, dist) %>%
-                       summarize(prob = mean(PresAbs))),
-             aes(x = dist, y = prob, color = factor(zone)), alpha = 0.5) +
-  xlab("Scaled Distance from Shore") +
-  ylab("Probability of Harbor Seal Sighting") +
-  theme_classic()
-
 # delta tide height
 HSFine_dth <- 
   with(
     daily_mbm_grid,
     data.frame(
-      dist = mean(dist),
-      dth = seq(-3,2, 0.025),
-      bathy = mean(bathy)))
+      dth = seq(-2.75,2, 0.05) %>% 
+        rep(times = 6),
+      zone = rep(1:6, each = 96)))
 
-HSFine2_dth <- 
-  cbind(HSFine_dth,
-        predict(HSeal_daily_mod, newdata = HSFine_dth, type = "response", se = TRUE))
+HSFine2_dth$fit <- predict(HSeal_daily_mod, newdata = HSFine_dth, type = "response")
 
-HSFine2_dth <- within(HSFine2_dth, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)})
+# HSFine2_dth <- within(HSFine2_dth, {
+#   LL <- fit - (1.96 * se.fit)
+#   UL <- fit + (1.96 * se.fit)})
 
-ggplot(HSFine2_dth) + 
-  geom_ribbon(aes(x = dth, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = dth, y = fit)) +
+HSFine2_dth %>% 
+  unscale('dth',.) %>% 
+  ggplot() + 
+  # geom_ribbon(aes(x = dth, y = fit, ymin = LL, ymax = UL, fill = factor(zone)), alpha = 0.1) + 
+  geom_line(aes(x = dth, y = fit, color = factor(zone))) +
   geom_point(data = (daily_mbm_grid %>%
                        filter(Species_code == 'HSeal') %>%
-                       group_by(year, zone) %>%
+                       unscale('dth', .) %>%
+                       mutate(dth = round(dth,0)) %>% 
+                       group_by(dth, zone) %>%
                        summarize(dth = mean(dth),
                                  prob = mean(PresAbs))),
-             aes(x = dth, y = prob, color = factor(zone)), alpha = 0.5) +
-  xlab("Scaled Delta Tide Height") +
+             aes(x = dth, y = prob), alpha = 0.5) +
+  xlab("Delta Tide Height (m)") +
   ylab("Probability of Harbor Seal Sighting") +
   theme_classic()
 
@@ -996,6 +857,35 @@ HPcoarse_bathy_plot <-
   ylab("Harbor Porpoise Count") +
   theme_classic() # seals are more common in shallow water up to a threshold
 
+### fine-scale models -------------------------------------------------------
+
+# temp_sd
+HPFine_tempSD <- 
+  data.frame(
+      temp_sd = seq(-1.2,4, 0.05))
+
+HPFine_tempSD$fit <- predict(HPorp_daily_mod, newdata = HPFine_tempSD, type = "response")
+
+# HSFine2_dth <- within(HSFine2_dth, {
+#   LL <- fit - (1.96 * se.fit)
+#   UL <- fit + (1.96 * se.fit)})
+
+HPFine_tempSD %>% 
+  unscale('temp_sd',.) %>% 
+  ggplot() + 
+  # geom_ribbon(aes(x = dth, y = fit, ymin = LL, ymax = UL, fill = factor(zone)), alpha = 0.1) + 
+  geom_line(aes(x = temp_sd, y = fit)) +
+  geom_point(data = (daily_mbm_grid %>%
+                       filter(Species_code == 'HPorp') %>%
+                       unscale('temp_sd', .) %>%
+                       mutate(temp_sd = round(temp_sd,2)) %>% 
+                       group_by(temp_sd) %>%
+                       summarize(temp_sd = mean(temp_sd),
+                                 prob = mean(PresAbs))),
+             aes(x = temp_sd, y = prob), alpha = 0.5) +
+  xlab("SST Standard Deviation (ºC)") +
+  ylab("Probability of Harbor Porpoise Sighting") +
+  theme_classic()
 
 
 # Save Figure 4 -----------------------------------------------------------
@@ -1050,48 +940,6 @@ for (x in names(coarse_plots)) {
          height = 2.98,
          units = 'in')
   print(paste('Done with', x))}
-
-
-# Fine-Scale Individual Effect Curves -------------------------------------
-
-
-## Glaucous-winged Gull -----------------------------------------------------------
-
-# salt
-GLFine_salt <- 
-    data.frame(
-      salt = seq(-4.6,1.3, 0.075) %>%
-        # number of zones
-        rep(times = 6) %>% 
-        # number of cruises
-        rep(times = 7),
-      zone = rep(1:6, each = 79) %>% 
-        rep(times = 7),
-      cruise.gen = rep(1:7, each = 474))
-
-GLFine2_salt <- 
-  cbind(GLFine_salt,
-        predict(GL_daily_mod, newdata = GLFine_salt, type = "response", se = TRUE))
-
-GLFine2_salt <- within(GLFine2_salt, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)}) %>% 
-  mutate(countInt = round(fit, digits = 0))
-
-GLfine_salt_plot <- 
-  GLFine2_salt %>%
-  unscale('salt', .) %>%
-  filter(cruise.gen == 1 | cruise.gen == 6) %>% 
-  ggplot() + 
-  # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = salt, y = countInt, ymin = LL, ymax = UL, fill = factor(zone)), alpha = 0.1) + 
-  geom_line(aes(x = salt, y = fit, color = factor(zone))) +
-  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('salt', .) %>% filter(cruise.gen == 1 | cruise.gen == 6)), aes(x = salt, y = Count), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
-  facet_wrap(~cruise.gen) +
-  xlab("Salinity (PPT)") +
-  ylab("Glaucous Gull Count") +
-  theme_classic() # gulls are more common in regions of shallow water
-
 
 # Prediction Spaces -------------------------------------------------------
 
