@@ -7,6 +7,7 @@ library(PerformanceAnalytics)
 library(mgcv)
 library(lme4)
 library(sf)
+library(cmocean)
 
 source('code/functions.R')
 
@@ -36,9 +37,57 @@ cruises_ocean_time_all <- data.frame(
   mutate(cruise.gen = cumsum(cruise.gen)) %>% 
   ungroup()
 
-# create a tibble with scaling information
+# create a tibble with coarse scaling information
+coarse_scaled_env <- 
+  env_grid %>% 
+  # remove grid cells that do not fall witin zones (cannot be used to train)
+  filter(!is.na(zone)) %>% 
+  # change zone to a factor
+  mutate(zone = factor(zone)) %>% 
+  # select variables for model
+  dplyr::select(Date, zone, bathy:salt) %>% 
+  # find average value in each zone on each cruise date
+  group_by(Date, zone) %>% 
+  summarize_if(is.numeric, mean, na.rm = T) %>%  # n = 1644
+  ungroup() %>% 
+  right_join(mbm_data, by = c('Date', 'zone')) %>%
+  # lots of NAs from years prior to 2017
+  filter(!is.na(bathy)) %>% # n = 672
+  mutate(year = lubridate::year(Date)) %>% 
+  # calculate average conditions in each zone in each year
+  group_by(year, zone, Species_code) %>% 
+  summarize_if(is.numeric, mean, na.rm = T) %>% 
+  ungroup() %>% 
+  mutate(countInt = round(Count,0)) %>% 
+  # scale predictors
+  mutate_at(c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt'), base::scale)
+
+coarse_scale_factors <- tibble()
+for(x in vars) {
+  scale <- 
+    coarse_scaled_env %>% 
+    pull(x) %>% 
+    attr(., 'scaled:scale')
+  center <-
+    coarse_scaled_env %>% 
+    pull(x) %>% 
+    attr(., 'scaled:center')
+  # store the scaling data in a tibble
+  scale_info <- 
+    tibble(
+      variable = c(x),
+      scale = scale,
+      center = center)
+  # join to repository
+  coarse_scale_factors <-
+    rbind(coarse_scale_factors, scale_info)
+  #cleanup
+  rm(scale_info)
+  print(x)}
+
+
+# create a tibble with daily scaling information
 scaled_env <- 
-  daily_mbm_grid <- 
   env_grid %>% 
   # add delta-tide-height variable
   left_join(dth, by = 'Date') %>% 
@@ -118,7 +167,7 @@ interannual_mbm_grid <-
 # train best model for:
 ## GL
 GL_interann_mod <- 
-  gam(formula = countInt~ s(bathy,k=3)+s(dist,k=3)+s(salt,k=4)+s(phyto,k=4)+s(temp_sd,k=4),
+  gam(formula = countInt~ s(bathy,k=3)+s(dist,k=3)+s(salt,k=5)+s(phyto,k=4)+s(temp_sd,k=4),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'GL')))
@@ -131,7 +180,7 @@ CoMu_interann_mod <-
 
 ## HSeal
 HSeal_interann_mod <- 
-  gam(formula = countInt~ countInt~ s(bathy,k=3)+s(phyto,k=4),
+  gam(formula = countInt~ s(bathy,k=3)+s(phyto,k=4),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'HSeal')))
@@ -231,7 +280,7 @@ GLCoarse_bathy <-
     Effort_sqkm = mean(Effort_sqkm),
     bathy = seq(-2,2, 0.025),
     dist = mean(dist),
-    sst = mean(sst),
+    salt = mean(salt),
     phyto = mean(phyto),
     temp_sd = mean(temp_sd)))
 
@@ -246,12 +295,12 @@ GLCoarse2_bathy <- within(GLCoarse2_bathy, {
 
 GLcoarse_bathy_plot <- 
   GLCoarse2_bathy %>% 
-  unscale('bathy', .) %>% 
+  unscale('bathy', ., resolution = 'coarse') %>% 
   ggplot() + 
-  geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = bathy, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('bathy', .)), aes(x = bathy, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
-  xlab("Bathymetry (m)") +
+  geom_ribbon(aes(x = bathy * -1, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = bathy * -1, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('bathy', ., resolution = 'coarse')), aes(x = bathy * -1, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  xlab("Depth(m)") +
   ylab("Glaucous Gull Count") +
   theme_classic() # gulls are more common in regions of shallow water
 
@@ -263,7 +312,7 @@ GLCoarse_dist <-
       Effort_sqkm = mean(Effort_sqkm),
       bathy = mean(bathy),
       dist = seq(-1,2, 0.025),
-      sst = mean(sst),
+      salt = mean(salt),
       phyto = mean(phyto),
       temp_sd = mean(temp_sd)))
 
@@ -277,43 +326,43 @@ GLCoarse2_dist <- within(GLCoarse2_dist, {
 
 GLcoarse_dist_plot <- 
   GLCoarse2_dist %>% 
-  unscale('dist', .) %>% 
+  unscale('dist', ., resolution = 'coarse') %>% 
   ggplot() + 
   geom_ribbon(aes(x = dist/1000, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
   geom_line(aes(x = dist/1000, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('dist', .)), aes(x = dist/1000, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('dist', ., resolution = 'coarse')), aes(x = dist/1000, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   xlab("Distance from Shore (km)") +
   ylab("Glaucous Gull Count") +
   theme_classic() # gulls are more common farther from shore
 
 # sea-surface temperature
-GlCoarse_sst <- 
+GlCoarse_salt <- 
   with(
     interannual_mbm_grid,
     data.frame(
       Effort_sqkm = mean(Effort_sqkm),
       bathy = mean(bathy),
       dist = mean(dist),
-      sst = seq(-0.75,0.75, 0.025),
+      salt = seq(-2.5,1.5, 0.025),
       phyto = mean(phyto),
       temp_sd = mean(temp_sd)))
 
-GlCoarse2_sst <- 
-  cbind(GlCoarse_sst,
-        predict(GL_interann_mod, newdata = GlCoarse_sst, type = "response", se = TRUE))
+GlCoarse2_salt <- 
+  cbind(GlCoarse_salt,
+        predict(GL_interann_mod, newdata = GlCoarse_salt, type = "response", se = TRUE))
 
-GlCoarse2_sst <- within(GlCoarse2_sst, {
+GlCoarse2_salt <- within(GlCoarse2_salt, {
   LL <- fit - (1.96 * se.fit)
   UL <- fit + (1.96 * se.fit)})
 
-GL_coarse_sst_plot <- 
-  GlCoarse2_sst %>% 
-  unscale('sst', .) %>% 
+GL_coarse_salt_plot <- 
+  GlCoarse2_salt %>% 
+  unscale('salt', ., resolution = 'coarse') %>% 
   ggplot() + 
-  geom_ribbon(aes(x = sst, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = sst, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('sst', .)), aes(x = sst, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
-  xlab("Sea-Surface Temperature (ºF)") +
+  geom_ribbon(aes(x = salt, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = salt, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('salt', ., resolution = 'coarse')), aes(x = salt, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  xlab("Sea-Surface Salinity (PPT)") +
   ylab("Glaucous Gull Count") +
   theme_classic() # gulls are more common in regions of higher surface temperatures
 
@@ -325,8 +374,8 @@ GLCoarse_phyto <-
       Effort_sqkm = mean(Effort_sqkm),
       bathy = mean(bathy),
       dist = mean(dist),
-      sst = mean(sst),
-      phyto = seq(-1,1, 0.025),
+      salt = mean(salt),
+      phyto = seq(-2,1.8, 0.025),
       temp_sd = mean(temp_sd)))
 
 GLCoarse2_phyto <- 
@@ -339,11 +388,11 @@ GLCoarse2_phyto <- within(GLCoarse2_phyto, {
 
 GL_coarse_phyto_plot <- 
   GLCoarse2_phyto %>% 
-  unscale('phyto', .) %>% 
+  unscale('phyto', ., resolution='coarse') %>% 
   ggplot() + 
   geom_ribbon(aes(x = phyto, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
   geom_line(aes(x = phyto, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('phyto', .)), aes(x = phyto, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('phyto', ., resolution='coarse')), aes(x = phyto, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   xlab("Phytoplankton Concentration (µmol/L)") +
   ylab("Glaucous Gull Count") +
   theme_classic() # gulls are more common in regions of low phytoplankton
@@ -356,9 +405,9 @@ GLCoarse_tempsd <-
       Effort_sqkm = mean(Effort_sqkm),
       bathy = mean(bathy),
       dist = mean(dist),
-      sst = mean(sst),
+      salt = mean(salt),
       phyto = mean(phyto),
-      temp_sd = seq(-1,1, 0.025)))
+      temp_sd = seq(-1.7,2.5, 0.025)))
 
 GLCoarse2_tempsd <- 
   cbind(GLCoarse_tempsd,
@@ -370,11 +419,11 @@ GLCoarse2_tempsd <- within(GLCoarse2_tempsd, {
 
 GL_coarse_tempsd_plot <- 
   GLCoarse2_tempsd %>% 
-  unscale('temp_sd', .) %>% 
+  unscale('temp_sd', ., resolution = 'coarse') %>% 
   ggplot() + 
   geom_ribbon(aes(x = temp_sd, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
   geom_line(aes(x = temp_sd, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'GL') %>%  unscale('temp_sd', .)), aes(x = temp_sd, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'GL') %>%  unscale('temp_sd', ., resolution = 'coarse')), aes(x = temp_sd, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   xlab("SST Standard Deviation (ºC)") +
   ylab("Glaucous Gull Count") +
   theme_classic() # gulls are more common in regions high temp_sd
@@ -406,13 +455,13 @@ GLFine2_salt <- within(GLFine2_salt, {
 
 GLfine_salt_plot <- 
   GLFine2_salt %>%
-  unscale('salt', .) %>%
+  unscale('salt', ., resolution = 'fine') %>%
   filter(cruise.gen == 1 | cruise.gen == 6) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
   geom_ribbon(aes(x = salt, y = countInt, ymin = LL, ymax = UL, fill = factor(zone)), alpha = 0.1) + 
   geom_line(aes(x = salt, y = fit, color = factor(zone))) +
-  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('salt', .) %>% filter(cruise.gen == 1 | cruise.gen == 6)), aes(x = salt, y = Count), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('salt', ., resolution = 'fine') %>% filter(cruise.gen == 1 | cruise.gen == 6)), aes(x = salt, y = Count), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   facet_wrap(~cruise.gen) +
   xlab("Salinity (PPT)") +
   ylab("Glaucous Gull Count") +
@@ -447,11 +496,11 @@ CMcoarse2_dist <- within(CMcoarse2_dist, {
 
 CM_coarse_dist_plot <- 
   CMcoarse2_dist %>% 
-  unscale('dist', .) %>% 
+  unscale('dist', ., resolution = 'coarse') %>% 
   ggplot() + 
   geom_ribbon(aes(x = dist/1000, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
   geom_line(aes(x = dist/1000, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('dist', .)), aes(x = dist/1000, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('dist', ., resolution = 'coarse')), aes(x = dist/1000, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   xlab("Distance from Shore (km)") +
   ylab("Common Murre Count") +
   theme_classic() # gulls are more common at lower sea-surface temperature values
@@ -479,11 +528,11 @@ CMcoarse2_bathy <- within(CMcoarse2_bathy, {
 
 CM_coarse_bathy_plot <- 
   CMcoarse2_bathy %>% 
-  unscale('bathy', .) %>% 
+  unscale('bathy', ., resolution = 'coarse') %>% 
   ggplot() + 
-  geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = bathy, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('bathy', .)), aes(x = bathy, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_ribbon(aes(x = bathy*-1, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = bathy*-1, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('bathy', ., resolution = 'coarse')), aes(x = bathy*-1, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   xlab("Bathymetry (m)") +
   ylab("Common Murre Count") +
   theme_classic() # gulls are more common at lower sea-surface temperature values
@@ -511,14 +560,26 @@ CMcoarse2_salt <- within(CMcoarse2_salt, {
 
 CM_coarse_salt_plot <- 
   CMcoarse2_salt %>% 
-  unscale('salt', .) %>% 
+  unscale('salt', ., resolution = 'coarse') %>% 
   ggplot() + 
   geom_ribbon(aes(x = salt, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
   geom_line(aes(x = salt, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('salt', .)), aes(x = salt, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('salt', ., resolution = 'coarse')), aes(x = salt, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   xlab("Salinity (ppt)") +
   ylab("Common Murre Count") +
   theme_classic() # gulls are more common at lower sea-surface temperature values
+
+# find the salinity which maximizes prediction
+CMcoarse2_salt %>%
+  unscale('salt', ., resolution = 'coarse') %>%
+  mutate(salt = round(salt, 1)) %>% group_by(salt) %>%
+  summarize(meanFit = mean(fit)) %>%
+  View()
+# find average salinity across transect
+interannual_mbm_grid %>%
+  unscale('salt', ., resolution = 'coarse') %>%
+  pull(salt) %>%
+  mean()
 
 # phytoplankton
 CMcoarse_phyto <- 
@@ -528,7 +589,7 @@ CMcoarse_phyto <-
       Effort_sqkm = mean(Effort_sqkm),
       dist = mean(dist),
       temp_sd = mean(temp_sd),
-      phyto = seq(-1,1, 0.025),
+      phyto = seq(-2,1.76, 0.025),
       bathy = mean(bathy),
       salt = mean(salt),
       sst = mean(sst)))
@@ -543,14 +604,26 @@ CMcoarse2_phyto <- within(CMcoarse2_phyto, {
 
 CM_coarse_phyto_plot <- 
   CMcoarse2_phyto %>% 
-  unscale('phyto', .) %>% 
+  unscale('phyto', ., resolution = 'coarse') %>% 
   ggplot() + 
   geom_ribbon(aes(x = phyto, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
   geom_line(aes(x = phyto, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('phyto',.)), aes(x = phyto, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('phyto',., resolution = 'coarse')), aes(x = phyto, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   xlab("Phytoplankton (µmol/L)") +
   ylab("Common Murre Count") +
   theme_classic() # gulls are more common at lower sea-surface temperature values
+
+# find the phytoplankton which maximizes prediction
+CMcoarse2_phyto %>%
+  unscale('phyto', ., resolution = 'coarse') %>%
+  mutate(phyto = round(phyto, 2)) %>% group_by(phyto) %>%
+  summarize(meanFit = mean(fit)) %>%
+  View()
+# find average phytoplankton across transect
+interannual_mbm_grid %>%
+  unscale('phyto', ., resolution = 'coarse') %>%
+  pull(phyto) %>%
+  mean()
 
 # sea-surface temperature standard deviaiton
 CMcoarse_tempsd <- 
@@ -559,7 +632,7 @@ CMcoarse_tempsd <-
     data.frame(
       Effort_sqkm = mean(Effort_sqkm),
       dist = mean(dist),
-      temp_sd = seq(-1,1, 0.025),
+      temp_sd = seq(-1.7,2.5, 0.025),
       phyto = mean(phyto),
       bathy = mean(bathy),
       salt = mean(salt),
@@ -575,11 +648,11 @@ CMcoarse2_tempsd <- within(CMcoarse2_tempsd, {
 
 CM_coarse_tempsd_plot <- 
   CMcoarse2_tempsd %>% 
-  unscale('temp_sd', .) %>% 
+  unscale('temp_sd', ., resolution='coarse') %>% 
   ggplot() + 
   geom_ribbon(aes(x = temp_sd, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
   geom_line(aes(x = temp_sd, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('temp_sd', .)), aes(x = temp_sd, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('temp_sd', ., resolution = 'coarse')), aes(x = temp_sd, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   xlab("SST Standard Deviation (ºC)") +
   ylab("Common Murre Count") +
   theme_classic() # gulls are more common at lower sea-surface temperature values
@@ -595,7 +668,7 @@ CMcoarse_sst <-
       phyto = mean(phyto),
       bathy = mean(bathy),
       salt = mean(salt),
-      sst = seq(-0.75,0.75, 0.025)))
+      sst = seq(-1.65,2.35, 0.025)))
 
 CMcoarse2_sst <- 
   cbind(CMcoarse_sst,
@@ -607,14 +680,26 @@ CMcoarse2_sst <- within(CMcoarse2_sst, {
 
 CM_coarse_sst_plot <- 
   CMcoarse2_sst %>% 
-  unscale('sst', .) %>% 
+  unscale('sst', ., resolution = 'coarse') %>% 
   ggplot() + 
   geom_ribbon(aes(x = sst, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
   geom_line(aes(x = sst, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu') %>%  unscale('sst', .)), aes(x = sst, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'CoMu') %>%  unscale('sst', ., resolution = 'coarse')), aes(x = sst, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   xlab("Sea Surface Temperature (ºC)") +
   ylab("Common Murre Count") +
   theme_classic() # gulls are more common at lower sea-surface temperature values
+
+# find the temperature which maximizes prediction
+CMcoarse2_sst %>%
+  unscale('sst', ., resolution = 'coarse') %>%
+  mutate(sst = round(sst, 1)) %>% group_by(sst) %>%
+  summarize(meanFit = mean(fit)) %>%
+  View()
+# find average salinity across transect
+interannual_mbm_grid %>%
+  unscale('sst', ., resolution = 'coarse') %>%
+  pull(sst) %>%
+  mean()
 
 # quick summary of average dth in study area
 # daily_mbm_grid %>% unscale('dth', .) %>% filter(Species_code == 'CoMu') %>% pull(dth) %>% mean()
@@ -721,14 +806,27 @@ HScoarse2_bathy <- within(HScoarse2_bathy, {
 
 HS_coarse_bathy_plot <- 
   HScoarse2_bathy %>% 
-  unscale('bathy', .) %>% 
+  unscale('bathy', ., resolution = 'coarse') %>% 
   ggplot() + 
   geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
   geom_line(aes(x = bathy, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('bathy', .)), aes(x = bathy, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('bathy', ., resolution = 'coarse')), aes(x = bathy, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   xlab("Bathymetry (m)") +
   ylab("Harbor Seal Count") +
   theme_classic() # seals are more common in shallow water up to a threshold
+
+# find bathymetry that maximizes prediction
+HScoarse2_bathy %>% 
+  unscale('bathy', ., resolution = 'coarse') %>% 
+  mutate(bathy = round(bathy, 0)) %>% 
+  group_by(bathy) %>% 
+  summarize(meanFit = mean(fit)) %>% View()
+
+# find average depth of each zone
+interannual_mbm_grid %>% 
+  unscale('bathy', ., resolution = 'coarse') %>% 
+  group_by(zone) %>% 
+  summarise(meanDepth = mean(bathy))
 
 # phytoplankton
 
@@ -738,7 +836,7 @@ HScoarse_phyto <-
     data.frame(
       Effort_sqkm = mean(Effort_sqkm),
       bathy = mean(bathy),
-      phyto = seq(-1,1, 0.025)))
+      phyto = seq(-2,1.76, 0.025)))
 
 HScoarse2_phyto <- 
   cbind(HScoarse_phyto,
@@ -750,15 +848,26 @@ HScoarse2_phyto <- within(HScoarse2_phyto, {
 
 HS_coarse_phyto_plot <- 
 HScoarse2_phyto %>% 
-  unscale('phyto', .) %>%
+  unscale('phyto', ., resolution = 'coarse') %>%
   ggplot() + 
   geom_ribbon(aes(x = phyto, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
   geom_line(aes(x = phyto, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('phyto', .)), aes(x = phyto, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('phyto', ., resolution = 'coarse')), aes(x = phyto, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   xlab("Phytoplankton Concentration (µmol/L)") +
   ylab("Harbor Seal Count") +
   theme_classic() # seals are more common in intermediate phytoplankton concentrations
 
+# find the phytoplankton which maximizes prediction
+HScoarse2_phyto %>%
+  unscale('phyto', ., resolution = 'coarse') %>%
+  mutate(phyto = round(phyto, 2)) %>% group_by(phyto) %>%
+  summarize(meanFit = mean(fit)) %>%
+  View()
+# find average phytoplankton across transect
+interannual_mbm_grid %>%
+  unscale('phyto', ., resolution = 'coarse') %>%
+  pull(phyto) %>%
+  mean()
 
 ### fine-scale models -------------------------------------------------------
 
@@ -800,7 +909,7 @@ HSFine2_dth %>%
 
 ## coarse-scale models -----------------------------------------------------
 
-# sst, bathy
+# sst, bathy, salt
 # sst
 HPcoarse_sst <- 
   with(
@@ -808,7 +917,8 @@ HPcoarse_sst <-
     data.frame(
       Effort_sqkm = mean(Effort_sqkm),
       bathy = mean(bathy),
-      sst = seq(-0.6,0.6, 0.025)))
+      sst = seq(-1.6,2.32, 0.025),
+      salt = mean(salt)))
 
 HPcoarse2_sst <- 
   cbind(HPcoarse_sst,
@@ -820,14 +930,24 @@ HPcoarse2_sst <- within(HPcoarse2_sst, {
 
 HPcoarse_sst_plot <- 
   HPcoarse2_sst %>% 
-  unscale('sst', .) %>% 
+  unscale('sst', ., resolution = 'coarse') %>% 
   ggplot() + 
   geom_ribbon(aes(x = sst, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
   geom_line(aes(x = sst, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'HPorp') %>% unscale('sst', .)), aes(x = sst, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'HPorp') %>% unscale('sst', ., resolution = 'coarse')), aes(x = sst, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   xlab("Sea Surface Temperature (ºC)") +
   ylab("Harbor Porpoise Count") +
   theme_classic() # seals are more common in shallow water up to a threshold
+
+# SST at highest prediction
+HPcoarse2_sst %>% 
+  unscale('sst', ., resolution = 'coarse') %>% 
+  mutate(sst = round(sst, 2)) %>% 
+  group_by(sst) %>% 
+  summarize(meanFit = mean(fit)) %>% View()
+
+# mean SST over transect
+interannual_mbm_grid %>% unscale('sst', ., resolution = 'coarse') %>%  filter(Species_code == 'HPorp') %>% pull(sst) %>% mean()
 
 # bathy
 HPcoarse_bathy <- 
@@ -835,8 +955,9 @@ HPcoarse_bathy <-
     interannual_mbm_grid,
     data.frame(
       Effort_sqkm = mean(Effort_sqkm),
-      bathy = seq(-2,2, 0.025),
-      sst = mean(sst)))
+      bathy = seq(-1.7,1.4, 0.025),
+      sst = mean(sst),
+      salt = mean(salt)))
 
 HPcoarse2_bathy <- 
   cbind(HPcoarse_bathy,
@@ -848,12 +969,53 @@ HPcoarse2_bathy <- within(HPcoarse2_bathy, {
 
 HPcoarse_bathy_plot <- 
   HPcoarse2_bathy %>% 
-  unscale('bathy', .) %>% 
+  unscale('bathy', ., resolution = 'coarse') %>% 
   ggplot() + 
-  geom_ribbon(aes(x = bathy, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
-  geom_line(aes(x = bathy, y = fit)) +
-  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'HPorp') %>% unscale('bathy', .)), aes(x = bathy, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
-  xlab("Bathymetry (m)") +
+  geom_ribbon(aes(x = bathy*-1, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = bathy*-1, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'HPorp') %>% unscale('bathy', ., resolution = 'coarse')), aes(x = bathy*-1, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  xlab("Depth (m)") +
+  ylab("Harbor Porpoise Count") +
+  theme_classic() # seals are more common in shallow water up to a threshold
+
+# Bathymetry at highest prediction
+HPcoarse2_bathy %>% 
+  unscale('bathy', ., resolution = 'coarse') %>% 
+  mutate(bathy = round(bathy, 1)) %>% 
+  group_by(bathy) %>% 
+  summarize(meanFit = mean(fit)) %>% View()
+
+# salt
+HPcoarse_salt <- 
+  with(
+    interannual_mbm_grid,
+    data.frame(
+      Effort_sqkm = mean(Effort_sqkm),
+      bathy = mean(bathy),
+      sst = mean(sst),
+      salt = seq(-2.5,1.3, 0.025)))
+
+HPcoarse2_salt <- 
+  cbind(HPcoarse_salt,
+        predict(HPorp_interann_mod, newdata = HPcoarse_salt, type = "response", se = TRUE))
+
+HPcoarse2_salt <- within(HPcoarse2_salt, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)}) %>%
+  # transform predictions less than zero to zero
+  mutate(LL = if_else(
+    LL < 0,
+    0,
+    LL))
+
+HPcoarse_salt_plot <- 
+  HPcoarse2_salt %>% 
+  unscale('salt', ., resolution = 'coarse') %>% 
+  ggplot() + 
+  geom_ribbon(aes(x = salt, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = salt, y = fit)) +
+  geom_point(data = (interannual_mbm_grid %>% filter(Species_code == 'HPorp') %>% unscale('salt', ., resolution = 'coarse')), aes(x = salt, y = countInt), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  xlab("Sea Surface Salinity (PPT)") +
   ylab("Harbor Porpoise Count") +
   theme_classic() # seals are more common in shallow water up to a threshold
 
@@ -955,16 +1117,23 @@ scaled_env_grid <-
   mutate(dist = if_else(
     dist > 6000,
     6000,
-    dist)) %>% 
+    dist)) %>%
+  # remove outliers in temperature standard deviation
+  # 1.5 * iqr = 0.04814385 ºC
+  # upper outlier limit is 0.4805773ºC 
+  mutate(temp_sd = if_else(
+    temp_sd > 0.04814385,
+    0.04814385,
+    dist)) %>%
   # scale env_grid
   # change zone to a factor
   mutate(zone = factor(zone),
          Year = lubridate::year(Date)) %>% 
-  # scale environmental variables
-  mutate_at(c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt'), base::scale) %>% 
   group_by(Year, grid_id) %>% 
   summarize_if(is.numeric, mean, na.rm = T) %>% 
-  ungroup()
+  ungroup() %>% 
+  # scale environmental variables
+  mutate_at(c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt'), base::scale)
 
 ## make coarse-scale predictions --------------------------------------------------------
 
@@ -991,7 +1160,9 @@ predicted_predators <-
             CoMu.m = mean(CoMu, na.rm = T),
             CoMu.sd = sd(CoMu, na.rm = T),
             HSeal.m = mean(HSeal, na.rm = T), 
-            HSeal.sd = sd(HSeal, na.rm = T)) %>% 
+            HSeal.sd = sd(HSeal, na.rm = T),
+            lat = lat_deg,
+            lon = long_deg) %>% 
   st_as_sf(coords = c("long_deg", "lat_deg"), crs = 4326)
   
 # find the percentile of abundance / presence for each species in each cell
@@ -1051,7 +1222,7 @@ ggplot() +
 ggplot() +
   geom_sf(data = islands, fill = "grey") +
   geom_sf(data = predicted_predators, aes(fill = CM.p), size = 2.75, shape = 22) +
-  scale_fill_cmocean(name = "balance", discrete = TRUE) +
+  scale_fill_cmocean(name = "balance", discrete = TRUE, labels = c("10", "30", "50", "70", "90")) +
   ggtitle("Common Murre Predicted Habitat (Autumn)") +
   xlab("Longitude (ºW)") +
   ylab("Latitude (ºN)") +
@@ -1062,10 +1233,63 @@ ggplot() +
 ggplot() +
   geom_sf(data = islands, fill = "grey") +
   geom_sf(data = predicted_predators, aes(fill = HS.p), size = 2.75, shape = 22) +
-  scale_fill_cmocean(name = "balance", discrete = TRUE) + 
+  scale_fill_cmocean(name = "balance", discrete = TRUE, labels = c("10", "30", "50", "70", "90")) + 
   ggtitle("Harbor Seal Predicted Habitat (Autumn)") +
   xlab("Longitude (ºE)") +
   ylab("Latitude (ºN)") +
   coord_sf() +
   theme_minimal() +
   theme(legend.position="bottom")
+
+
+### all overlap -------------------------------------------------------------
+
+# areas of overlap
+predicted_predators %>% 
+  mutate(HS.p = as.numeric(HS.p),
+         GL.p = as.numeric(GL.p),
+         CM.p = as.numeric(CM.p)) %>%  #View()
+  # find regions of core habitat for all species
+  filter(HS.p >3 &
+           CM.p > 3 &
+           GL.p > 3) %>% #write_csv('data/clean/all_predator_sparse.csv')
+  # create a metric to plot by
+  mutate(HS.p = HS.p-3,
+         GL.p = GL.p-3,
+         CM.p = CM.p-3,
+    all.p = mean(c(HS.p, CM.p, GL.p)) %>% round(0)) %>% # View()
+  ggplot()+
+  geom_sf(data = islands, fill = "grey") +
+  geom_sf(aes(fill = factor(all.p)), size = 2.75, shape = 22) +
+  scale_fill_cmocean(name = "balance", discrete = TRUE, labels = c("10", "30", "50", "70", "90")) + 
+  ggtitle("Predator Predicted Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal() +
+  theme(legend.position="bottom")
+
+### seabird overlap ---------------------------------------------------------
+predicted_predators %>% 
+  mutate(HS.p = as.numeric(HS.p),
+         GL.p = as.numeric(GL.p),
+         CM.p = as.numeric(CM.p)) %>%  #View()
+  # find regions of core habitat for all species
+  filter(CM.p > 3 &
+           GL.p > 3) %>% #write_csv('data/clean/all_predator_sparse.csv')
+  # create a metric to plot by
+  mutate(HS.p = HS.p-3,
+         GL.p = GL.p-3,
+         CM.p = CM.p-3,
+         all.p = mean(c(HS.p, CM.p, GL.p)) %>% round(0)) %>% # View()
+  ggplot()+
+  geom_sf(data = islands, fill = "grey") +
+  geom_sf(aes(fill = factor(all.p)), size = 2.75, shape = 22) +
+  scale_fill_cmocean(name = "balance", discrete = TRUE, labels = c("10", "30", "50", "70", "90")) + 
+  ggtitle("Predator Predicted Habitat (Autumn)") +
+  xlab("Longitude (ºE)") +
+  ylab("Latitude (ºN)") +
+  coord_sf() +
+  theme_minimal() +
+  theme(legend.position="bottom")
+

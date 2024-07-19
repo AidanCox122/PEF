@@ -289,21 +289,40 @@ get_gam <-
 # Unscale Environmenal Variables ------------------------------------------
 
 unscale <- 
-  function(x, data){
-    scale_info <- 
-      scale_factors %>% 
-      filter(variable == x)
+  function(x, data, resolution = NULL){
+    if(resolution != "coarse" & resolution != "fine"){
+      stop('Unknown value specified for model resolution. Please specify either fine or coarse')}
     
-    funct <- 
-      function(y){
-        ((y * scale_info$scale) + scale_info$center)}
-    
-    unscaled <- 
-      data  %>%  
-      mutate_at(x, funct)
-    
-    return(unscaled)}
-  
+    if(resolution == 'coarse'){
+      scale_info <- 
+        coarse_scale_factors %>% 
+        filter(variable == x)
+      
+      funct <- 
+        function(y){
+          ((y * scale_info$scale) + scale_info$center)}
+      
+      unscaled <- 
+        data  %>%  
+        mutate_at(x, funct)
+      
+      return(unscaled)
+    } else{
+      print('Model Resolution Specified as: Fine-Scale')
+      scale_info <- 
+        scale_factors %>% 
+        filter(variable == x)
+      
+      funct <- 
+        function(y){
+          ((y * scale_info$scale) + scale_info$center)}
+      
+      unscaled <- 
+        data  %>%  
+        mutate_at(x, funct)
+      
+      return(unscaled)}}
+
 
 # Generalized Additive Mixed Model Weights --------------------------------
 

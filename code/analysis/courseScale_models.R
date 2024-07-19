@@ -99,7 +99,7 @@ getWeightIANN(base = c('bathy', 'dist', 'salt', 'phyto', 'temp_sd'),
 
 ### best model predicting interannual variability in GL: -----
 GL_interann_mod <- 
-  gam(formula = countInt~ s(bathy,k=3)+s(dist,k=3)+s(salt,k=4)+s(phyto,k=4)+s(temp_sd,k=4),
+  gam(formula = countInt~ s(bathy,k=3)+s(dist,k=3)+s(salt,k=5)+s(phyto,k=4)+s(temp_sd,k=4),
       family = poisson,
       offset = log(Effort_sqkm),
       data = (interannual_mbm_grid %>% filter(Species_code == 'GL')))
@@ -379,28 +379,47 @@ for (z in unique(cv_base$zone)) {
 # summarizing predition error
 # Leave-one-year out tests extrapolation through time
 LYO_raw %>%
-  group_by(year) %>% 
-  summarize(GL = median(d.GL, na.rm = T),
-            CM = median(d.CM,na.rm = T),
-            HS = median(d.HS,na.rm = T),
-            HP = median(d.HP,na.rm = T))%>%
-  pivot_longer(cols = c('GL', 'CM', 'HS', "HP"),
+#   group_by(year) %>%
+#   summarize(GL = median(d.GL, na.rm = T),
+#             CM = median(d.CM,na.rm = T),
+#             HS = median(d.HS,na.rm = T),
+#             HP = median(d.HP,na.rm = T))%>%
+  dplyr::select(year, GL = d.GL, CM = d.CM, HS = d.HS, HP = d.HP) %>% 
+  pivot_longer(cols = c('GL', 'CM', 'HS', 'HP'),
                names_to = 'species',
                values_to = 'predError') %>% 
   group_by(species) %>% 
   summarize(predErr_Time = median(predError, na.rm = T))
 
+# deviance explained
+LYO_results %>% 
+  group_by(species) %>% 
+  summarize(
+    Mean.Dev.Expl = mean(Dev.Expl),
+    SD.Dev.Expl = sd(Dev.Expl),
+    Mean.R2 = mean(R.squared),
+    SD.R2 = sd(R.squared))
+
 # Leave-one-zone out tests extrapolation through space
 LZO_raw %>%
-  group_by(zone) %>% 
-  summarize(GL = median(d.GL, na.rm = T),
-            CM = median(d.CM,na.rm = T),
-            HS = median(d.HS,na.rm = T),
-            HP = median(d.HP,na.rm = T))%>%
+  # group_by(zone) %>% 
+  # summarize(GL = median(d.GL, na.rm = T),
+  #           CM = median(d.CM,na.rm = T),
+  #           HS = median(d.HS,na.rm = T),
+  #           HP = median(d.HP,na.rm = T))%>%
+  dplyr::select(year, GL = d.GL, CM = d.CM, HS = d.HS, HP = d.HP) %>% 
   pivot_longer(cols = c('GL', 'CM', 'HS', "HP"),
                names_to = 'species',
                values_to = 'predError') %>% 
   group_by(species) %>% 
   summarize(predErr_Space = median(predError, na.rm = T))
 
+# deviance explained
+LZO_results %>% 
+  group_by(species) %>% 
+  summarize(
+    Mean.Dev.Expl = mean(Dev.Expl),
+    SD.Dev.Expl = sd(Dev.Expl),
+    Mean.R2 = mean(R.squared),
+    SD.R2 = sd(R.squared))
 
