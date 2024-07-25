@@ -232,7 +232,7 @@ getWeightIANN(base = c('bathy', 'sst', 'salt'),
               training = interannual_mbm_grid)
 # NULL is the best predictor
 
-### best model for HSPorps ----
+### best model for HPorps ----
 HPorp_interann_mod <- 
   gam(formula = countInt~ s(bathy,k=3)+ s(sst,k=4) + s(salt, k=4),
       family = poisson,
@@ -259,19 +259,19 @@ for (y in unique(cv_base$year)) {
   train <- cv_base %>% filter(year != y)
   test <- cv_base %>% filter(year == y)
   ## train a model for each species
-  lm.HP <- gam(formula = HPorp~s(bathy,k=3)+s(sst, k=3),
+  lm.HP <- gam(formula = HPorp~s(bathy,k=3)+ s(sst,k=4) + s(salt, k=4),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
-  lm.HS <- gam(formula = HSeal~ s(bathy,k=3)+s(phyto,k=3),
+  lm.HS <- gam(formula = HSeal~ s(bathy,k=3)+s(phyto,k=4),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
-  lm.CM <- gam(formula = CoMu~s(dist,k=3)+s(temp_sd,k=3)+s(phyto,k=3)+s(bathy,k=3)+s(salt,k=3)+s(sst,k=3),
+  lm.CM <- gam(formula = CoMu~s(dist,k=3)+s(phyto,k=4)+s(temp_sd,k=4)+s(salt,k=4)+s(sst,k=4)+s(bathy,k=3),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
-  lm.GL <- gam(formula = GL~ s(bathy,k=3)+s(dist,k=3)+s(sst,k=3)+s(phyto,k=3)+s(temp_sd,k=3),
+  lm.GL <- gam(formula = GL~ s(bathy,k=3)+s(dist,k=3)+s(salt,k=5)+s(phyto,k=4)+s(temp_sd,k=4),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
@@ -283,17 +283,30 @@ for (y in unique(cv_base$year)) {
       HP.p = predict(lm.HP, newdata = test, type = "response", se = FALSE),
       # round non-integer values produced be predict() function
       HP.p = round(HP.p, digits = 0),
+      # cap prediction at highest observed value
+      HP.p = if_else(HP.p > max(train$HPorp),
+                     max(train$HPorp),
+                     HP.p),
       # repeat for Harbor seal
       HS.p = predict(lm.HS, newdata = test, type = "response", se = FALSE),
       HS.p = round(HS.p, digits = 0),
+      HS.p = if_else(HS.p > max(train$HSeal),
+                     max(train$HSeal),
+                     HS.p),
       # Common Murre
       CM.p = predict(lm.CM, newdata = test, type = "response", se = FALSE),
       CM.p = round(CM.p, digits = 0),
+      CM.p = if_else(CM.p > max(train$CoMu),
+                     max(train$CoMu),
+                     CoMu),
       # Glaucous-winged gull
       GL.p = predict(lm.GL, newdata = test, type = "response", se = FALSE),
-      GL.p = round(GL.p, digits = 0)) %>% 
+      GL.p = round(GL.p, digits = 0),
+      GL.p = if_else(GL.p > max(train$GL),
+                     max(train$GL),
+                     GL.p)) %>%  
     # # convert zero values to very small numbers to avoid infinite predition error
-    # mutate_all( ~ ifelse( . == 0, 0.000001, .)) %>% 
+    # mutate_all( ~ ifelse( . == 0, 0.000001, .)) %>%
     # calculate prediction error for each species in each zone
     mutate(
       d.HP = (((HPorp - HP.p) / HPorp) * 100),
@@ -321,19 +334,19 @@ for (z in unique(cv_base$zone)) {
   train <- cv_base %>% filter(zone != z)
   test <- cv_base %>% filter(zone == z)
   ## train a model for each species
-  lm.HP <- gam(formula = HPorp~s(bathy,k=3)+s(sst, k=3),
+  lm.HP <- gam(formula = HPorp~s(bathy,k=3)+ s(sst,k=4) + s(salt, k=4),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
-  lm.HS <- gam(formula = HSeal~ s(bathy,k=3)+s(phyto,k=3),
+  lm.HS <- gam(formula = HSeal~ s(bathy,k=3)+s(phyto,k=4),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
-  lm.CM <- gam(formula = CoMu~s(dist,k=3)+s(temp_sd,k=3)+s(phyto,k=3)+s(bathy,k=3)+s(salt,k=3)+s(sst,k=3),
+  lm.CM <- gam(formula = CoMu~s(dist,k=3)+s(phyto,k=4)+s(temp_sd,k=4)+s(salt,k=4)+s(sst,k=4)+s(bathy,k=3),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
-  lm.GL <- gam(formula = GL~ s(bathy,k=3)+s(dist,k=3)+s(sst,k=3)+s(phyto,k=3)+s(temp_sd,k=3),
+  lm.GL <- gam(formula = GL~ s(bathy,k=3)+s(dist,k=3)+s(salt,k=5)+s(phyto,k=4)+s(temp_sd,k=4),
                family = poisson,
                offset = log(Effort_sqkm),
                data = train)
@@ -345,17 +358,30 @@ for (z in unique(cv_base$zone)) {
       HP.p = predict(lm.HP, newdata = test, type = "response", se = FALSE),
       # round non-integer values produced be predict() function
       HP.p = round(HP.p, digits = 0),
+      # cap prediction at highest observed value
+      HP.p = if_else(HP.p > max(train$HPorp),
+                     max(train$HPorp),
+                     HP.p),
       # repeat for Harbor seal
       HS.p = predict(lm.HS, newdata = test, type = "response", se = FALSE),
       HS.p = round(HS.p, digits = 0),
+      HS.p = if_else(HS.p > max(train$HSeal),
+                     max(train$HSeal),
+                     HS.p),
       # Common Murre
       CM.p = predict(lm.CM, newdata = test, type = "response", se = FALSE),
       CM.p = round(CM.p, digits = 0),
+      CM.p = if_else(CM.p > max(train$CoMu),
+                     max(train$CoMu),
+                     CoMu),
       # Glaucous-winged gull
       GL.p = predict(lm.GL, newdata = test, type = "response", se = FALSE),
-      GL.p = round(GL.p, digits = 0)) %>% 
+      GL.p = round(GL.p, digits = 0),
+      GL.p = if_else(GL.p > max(train$GL),
+                     max(train$GL),
+                     GL.p)) %>% 
     # # convert zero values to very small numbers to avoid infinite predition error
-    # mutate_all( ~ ifelse( . == 0, 0.000001, .)) %>% 
+    # mutate_all( ~ ifelse( . == 0, 0.000001, .)) %>%
     # calculate prediction error for each species in each zone
     mutate(
       d.HP = (((HPorp - HP.p) / HPorp) * 100),
@@ -376,7 +402,7 @@ for (z in unique(cv_base$zone)) {
   rm(data, train, test, lm.HP, lm.HS, lm.CM, lm.GL)
 }
 
-# summarizing predition error
+### summarizing LYO predition error ----
 # Leave-one-year out tests extrapolation through time
 LYO_raw %>%
 #   group_by(year) %>%
@@ -387,9 +413,15 @@ LYO_raw %>%
   dplyr::select(year, GL = d.GL, CM = d.CM, HS = d.HS, HP = d.HP) %>% 
   pivot_longer(cols = c('GL', 'CM', 'HS', 'HP'),
                names_to = 'species',
-               values_to = 'predError') %>% 
-  group_by(species) %>% 
-  summarize(predErr_Time = median(predError, na.rm = T))
+               values_to = 'predError') %>%   #View()
+  #change -Inf predictions to NA
+  mutate(predError = if_else(
+    predError < -6.909528e+12,
+    NA,
+    predError)) %>%
+  group_by(species) %>%  #View()
+  summarize(predErr_Time = mean(predError, na.rm = T),
+            SD.predErr_Time = sd(predError, na.rm = T))
 
 # deviance explained
 LYO_results %>% 
@@ -399,6 +431,19 @@ LYO_results %>%
     SD.Dev.Expl = sd(Dev.Expl),
     Mean.R2 = mean(R.squared),
     SD.R2 = sd(R.squared))
+
+# sumarize absolute difference in prediction
+LYO_raw %>% 
+  mutate(abs.diff.HP = (HPorp - HP.p),
+         abs.diff.HS = HSeal - HS.p,
+         abs.diff.CM = CoMu - CM.p,
+         abs.diff.GL = GL - GL.p) %>% 
+  dplyr::select(year, GL = abs.diff.GL, CM = abs.diff.CM, HS = abs.diff.HS, HP = abs.diff.HP) %>% 
+  pivot_longer(cols = c('GL', 'CM', 'HS', 'HP'),
+               names_to = 'species',
+               values_to = 'absoluteDiff') %>% # View()
+  group_by(species) %>% 
+  summarize(meanDiff = mean(absoluteDiff))
 
 # Leave-one-zone out tests extrapolation through space
 LZO_raw %>%
@@ -410,9 +455,15 @@ LZO_raw %>%
   dplyr::select(year, GL = d.GL, CM = d.CM, HS = d.HS, HP = d.HP) %>% 
   pivot_longer(cols = c('GL', 'CM', 'HS', "HP"),
                names_to = 'species',
-               values_to = 'predError') %>% 
+               values_to = 'predError') %>% #View()
+  # # change -Inf predictions to NA
+  mutate(predError = if_else(
+    predError < -6.909528e+12,
+    NA,
+    predError)) %>%  #View()
   group_by(species) %>% 
-  summarize(predErr_Space = median(predError, na.rm = T))
+  summarize(predErr_Space = mean(predError, na.rm = T),
+            Sd.predErr_Space = sd(predError, na.rm = T))
 
 # deviance explained
 LZO_results %>% 
@@ -422,4 +473,86 @@ LZO_results %>%
     SD.Dev.Expl = sd(Dev.Expl),
     Mean.R2 = mean(R.squared),
     SD.R2 = sd(R.squared))
+
+# sumarize absolute difference in prediction
+LZO_raw %>% 
+  mutate(abs.diff.HP = (HPorp - HP.p),
+         abs.diff.HS = HSeal - HS.p,
+         abs.diff.CM = CoMu - CM.p,
+         abs.diff.GL = GL - GL.p) %>% 
+  dplyr::select(year, GL = abs.diff.GL, CM = abs.diff.CM, HS = abs.diff.HS, HP = abs.diff.HP) %>% 
+  pivot_longer(cols = c('GL', 'CM', 'HS', 'HP'),
+               names_to = 'species',
+               values_to = 'absoluteDiff') %>% # View()
+  group_by(species) %>% 
+  summarize(meanDiff = mean(absoluteDiff))
+
+
+# why is predError so high? --------------------------------------------------
+
+interannual_mbm_grid %>% 
+  filter(Species_code == 'GL') %>% 
+  group_by(zone) %>%
+  summarise(
+    meanBathy = mean(bathy),
+    meanDist = mean(dist),
+    meanSalt = mean(salt), 
+    meanPhyto = mean(phyto),
+    meanTemp = mean(temp_sd)) %>% View()
+
+# parse individual LZO results
+
+z <- 2
+
+# on training data
+train.full <- 
+  train %>% 
+  mutate(
+    # predict values for harbor porpoise
+    HP.p = predict(lm.HP, newdata = train, type = "response", se = FALSE),
+    # round non-integer values produced be predict() function
+    HP.p = round(HP.p, digits = 0),
+    # repeat for Harbor seal
+    HS.p = predict(lm.HS, newdata = train, type = "response", se = FALSE),
+    HS.p = round(HS.p, digits = 0),
+    # Common Murre
+    CM.p = predict(lm.CM, newdata = train, type = "response", se = FALSE),
+    CM.p = round(CM.p, digits = 0),
+    # Glaucous-winged gull
+    GL.p = predict(lm.GL, newdata = train, type = "response", se = FALSE),
+    GL.p = round(GL.p, digits = 0)) %>% summary()
+# # convert zero values to very small numbers to avoid infinite predition error
+# mutate_all( ~ ifelse( . == 0, 0.000001, .)) %>% 
+# calculate prediction error for each species in each zone
+mutate(
+  d.HP = (((HPorp - HP.p) / HPorp) * 100),
+  d.HS = (((HSeal - HS.p) / HSeal) * 100),
+  d.CM = (((CoMu - CM.p) / CoMu) * 100),
+  d.GL = (((GL - GL.p) / GL) * 100))
+
+# on test data
+test.full <- 
+  test %>% 
+  mutate(
+    # predict values for harbor porpoise
+    HP.p = predict(lm.HP, newdata = test, type = "response", se = FALSE),
+    # round non-integer values produced be predict() function
+    HP.p = round(HP.p, digits = 0),
+    # repeat for Harbor seal
+    HS.p = predict(lm.HS, newdata = test, type = "response", se = FALSE),
+    HS.p = round(HS.p, digits = 0),
+    # Common Murre
+    CM.p = predict(lm.CM, newdata = test, type = "response", se = FALSE),
+    CM.p = round(CM.p, digits = 0),
+    # Glaucous-winged gull
+    GL.p = predict(lm.GL, newdata = test, type = "response", se = FALSE),
+    GL.p = round(GL.p, digits = 0)) %>% summary()
+# # convert zero values to very small numbers to avoid infinite predition error
+# mutate_all( ~ ifelse( . == 0, 0.000001, .)) %>% 
+# calculate prediction error for each species in each zone
+mutate(
+  d.HP = (((HPorp - HP.p) / HPorp) * 100),
+  d.HS = (((HSeal - HS.p) / HSeal) * 100),
+  d.CM = (((CoMu - CM.p) / CoMu) * 100),
+  d.GL = (((GL - GL.p) / GL) * 100))
 

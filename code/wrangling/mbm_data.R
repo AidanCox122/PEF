@@ -110,6 +110,20 @@ write_csv(mydata_bydatezone, 'data/clean/mbm_master.csv')
 
 # summaries ---------------------------------------------------------------
 
+# Table 2
+mydata_bydatezone %>%
+  # create year column
+  mutate(year = lubridate::year(Date)) %>% 
+  pivot_wider(names_from = Species_code, values_from = c(Density, Count)) %>% #View()
+  group_by(year) %>% 
+  summarise(
+    NumCruise = unique(Date) %>% length(),
+    CumArea = sum(Effort_sqkm),
+    MbmDenisty = mean(c(Density_HSeal, Density_HPorp)),
+    SDMbmDensity = sd(c(Density_HSeal, Density_HPorp)) %>% round(1),
+      SeabDensity = mean(c(Density_GL, Density_CoMu)),
+    SDSeabDensity = sd(c(Density_GL, Density_CoMu)) %>% round(1)) %>% View()
+
 # calculate average count and density
 mydata_bydatezone %>% 
   # filter to the species of interest
@@ -125,7 +139,7 @@ mydata_bydatezone %>%
 mydata_bydatezone %>% 
   mutate(Year = lubridate::year(Date)) %>% 
   # filter to the species of interest
-  filter(Species_code == 'HPorp') %>% 
+  filter(Species_code == 'CoMu') %>% 
   # group by zone
   group_by(Year) %>% 
   summarize(
