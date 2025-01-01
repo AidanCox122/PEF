@@ -163,34 +163,40 @@ rm(current_amplitudes_2019, current_amplitudes_2020, current_amplitudes_2021)
 # calculate static tidal current proxy
 # does the strength of tidal currents vary between years at each station?
 
-proxy <-
-  tide_currents %>% 
-  mutate(Year = lubridate::year(Date),
-         Year = factor(Year))
-
 # visual comparison
-ggplot(data = proxy) +
+tide_currents %>% 
+  mutate(Year = lubridate::year(Date),
+         Year = factor(Year)) %>% 
+  ggplot() +
   geom_jitter(aes(x = Year, y = Amplitude, color = Year), alpha = 0.5) +
   geom_boxplot(aes(x = Year, y = Amplitude), color = "black", fill = NA) +
   coord_flip() +
   theme_classic() 
 
-proxy %>% group_by(Year) %>%
+tide_currents %>% 
+  mutate(Year = lubridate::year(Date),
+         Year = factor(Year)) %>%
+  group_by(Year) %>%
   summarise(
     count = n(),
     mean = mean(Amplitude, na.rm = TRUE),
     sd = sd(Amplitude, na.rm = TRUE)
   )
 
-# general ANOVA across all data
+# general ANOVA across all data from San Juan Channel
 proxy <- 
-  proxy %>% 
+  tide_currents %>% 
+  mutate(Year = lubridate::year(Date),
+         Year = factor(Year)) %>% 
+  # filter only stations used for PEF transect
+  filter(Station %in% c("PUG1720", "PUG1745", "PUG1721", "PUG1746", "PCT2191", "PUG1703", "PUG1742")) %>% 
   group_by(Year, Station) %>% 
   summarize(
     Avg.Amplitude = mean(Amplitude),
-    SD = sd(Amplitude))
+    SD = sd(Amplitude)) %>% 
+  ungroup()
 
-tide.aov.general <- aov(Avg.Amplitude ~ Year, data = proxy)
+tide.aov.general <- rstatix::kruskal_test(`Avg.Amplitude` ~ `Year`, data = proxy)
 
 # station specific ANOVA
 variable_stations <-
