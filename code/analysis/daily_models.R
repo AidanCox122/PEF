@@ -68,9 +68,10 @@ daily_mbm_grid <-
   left_join(
     (cruises_ocean_time_all %>% 
       dplyr::select(Date, cruise.gen)),
-    by = 'Date') # %>% 
-  # # add a year column
-  # mutate(year = lubridate::year(Date))
+    by = 'Date') %>% 
+  mutate(
+    year = factor(year, levels = c(2017, 2018, 2019, 2020, 2021, ordered = T)),
+    cruise.gen = factor(cruise.gen, levels = c(1,2,3,4,5,6,7), ordered = T))
 
 interspeciesComp <- 
   daily_mbm_grid %>% 
@@ -95,61 +96,33 @@ daily_mbm_grid %>%
 
 # Harbor seal (logit) -------------------------------------------------------------
 
-# FS:1
-get_logit(
-  test = c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-  species = 'HSeal',
-  training = daily_mbm_grid)
-# bathy is the best model
+daily_mbm_grid %>% 
+  filter(Species_code == 'HSeal') %>% 
+    mgcv::gam(PresAbs ~ s(bathy, k=3) + s(topog, k=3) + s(dist, k=3) + s(tcur, k=3) + s(phyto, k=3) + s(sst,k=3) + s(temp_sd, k=3) + s(salt, k=3) + s(dth, k=3) + s(year, bs="re") + s(cruise.gen, bs = "re"),
+          data = .,
+          family = 'binomial',
+          select = TRUE) %>% 
+  summary() # terms selected by model are bathy, topog, dist, sst, dth
 
-# FS:2
-get_logit(
-  base = c('bathy'),
-  test = c('topog', 'dist', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-  species = 'HSeal',
-  training = daily_mbm_grid)
-# distance from shore is best model
+HSeal_daily <- 
+  daily_mbm_grid %>% 
+  filter(Species_code == 'HSeal') %>% 
+  mgcv::gam(PresAbs ~ s(bathy, k=3) + s(dist, k=3) + s(sst,k=3) + s(dth, k=3) + s(year, bs="re") + s(cruise.gen, bs = "re"),
+            data = .,
+            family = 'binomial',
+            select = TRUE)
 
-# forward selection 3
-get_logit(
-  base = c('bathy', 'dist'),
-  test = c('phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-  species = 'HSeal',
-  training = daily_mbm_grid)
-# dth is next best
+summary(HSeal_daily)
 
-# forward selection 3
-get_logit(
-  base = c('bathy', 'dist', 'dth'),
-  test = c('phyto', 'sst', 'temp_sd', 'salt'),
-  species = 'HSeal',
-  training = daily_mbm_grid)
-# null is next best
+# assess concurvity
 
-### interspecies effects HSeal ----
+mgcv::concurvity(HSeal_daily, full = T)
+# many values are >0.8, removing tcur shrinks most of them to acceptable
+mgcv::concurvity(HSeal_daily, full = F)
+# SST is still very high because it is correlated with cruise.gen
 
-get_logit(
-  base = c('bathy','dist', 'dth'),
-  test = c('CoMu', 'HPorp', 'GL'),
-  species = 'All',
-  training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
-# CoMu improves model
 
-get_logit(
-  base = c('bathy','dist', 'dth','CoMu'),
-  test = c('HPorp', 'GL'),
-  species = 'All',
-  training = (interspeciesComp %>% mutate(PresAbs = if_else(HSeal > 0, 1, 0))))
-# null is best
-
-### best model for HSeal ----
-HSeal_daily_mod <- 
-  glm(PresAbs ~ bathy + dist + dth,
-      data = (daily_mbm_grid %>% filter(Species_code == 'HSeal')),
-      family = 'binomial')
-
-summary(HSeal_daily_mod)
-# 0.2380584 deviance explained
+## STILL NEEDS TO BE UPDATED BELOW HERE ##
 
 # w. interspecies
 HSeal_daily_mod_interspecies <- 
@@ -166,28 +139,31 @@ form_HSeal <- as.formula(HSeal_daily_mod$formula)
 
 ## HPorp (logit) -----------------------------------------------------------
 
-# FS:1
-get_logit(
-  test = c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-  species = 'HPorp',
-  training = daily_mbm_grid)
-# distance from shore is the best model
+# perform model selection
+daily_mbm_grid %>% 
+  filter(Species_code == 'HPorp') %>% 
+  mgcv::gam(PresAbs ~ s(bathy, k=3) + s(topog, k=3) + s(dist, k=3) + s(tcur, k=3) + s(phyto, k=3) + s(sst,k=3) + s(temp_sd, k=3) + s(salt, k=3) + s(dth, k=3) + s(year, bs="re") + s(cruise.gen, bs = "re"),
+            data = .,
+            family = 'binomial',
+            select = TRUE) %>% 
+  summary() # terms selected by model are dist and temp_sd (not signif.) only vars
 
-# FS:2
-get_logit(
-  base = c('dist'),
-  test = c('bathy', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-  species = 'HPorp',
-  training = daily_mbm_grid)
-# temp_sd from shore is the best model // BUT NOT SIGNIF. 
+HPorp_daily <- 
+  daily_mbm_grid %>% 
+  filter(Species_code == 'HPorp') %>% 
+  mgcv::gam(PresAbs ~ s(dist, k=3) + s(year, bs="re") + s(cruise.gen, bs = "re"),
+            data = .,
+            family = 'binomial',
+            select = TRUE)
 
-# FS:3
-get_logit(
-  base = c('dist', 'temp_sd'),
-  test = c('bathy', 'salt', 'dth'),
-  species = 'HPorp',
-  training = daily_mbm_grid)
-# null the best model
+summary(HPorp_daily)
+
+# assess concurvity
+
+mgcv::concurvity(HPorp_daily, full = T)
+# no values are >0.8, besides random effects
+
+## NEEDS UPDATING BELOW HERE ## 
 
 ### interspecies effects HPorp ----
 
