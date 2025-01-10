@@ -204,68 +204,35 @@ form_HPorp <- as.formula(HPorp_daily_mod$formula)
 
 ## glaucous-winged gull (gam) ----------------------------------------------------
 
-# forward selection 1
-get_gam(
-  test = c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-  species = 'GL',
-  training = daily_mbm_grid)
-# bathymetry is the best model
+# select model terms
+daily_mbm_grid %>% 
+  filter(Species_code == 'GL') %>% 
+  mgcv::gam(Count ~ s(bathy, k=3) + s(topog, k=3) + s(dist, k=3) + s(tcur, k=3) + s(phyto, k=3) + s(sst,k=3) + s(temp_sd, k=3) + s(salt, k=3) + s(dth, k=3) + s(year, bs="re") + s(cruise.gen, bs = "re"),
+            data = .,
+            offset = log(Effort_sqkm),
+            family = 'nb',
+            select = TRUE) %>% 
+  summary() # terms are bathy, dist, tcur, sst, temp_sd, dth,
 
-# forward selection 2
-get_gam(
-  base = c('bathy'),
-  test = c('topog', 'dist', 'phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-  species = 'GL',
-  training = daily_mbm_grid)
-# distance from shore is the best model
+# define the full model
+GL_daily <- 
+  daily_mbm_grid %>% 
+  filter(Species_code == 'GL') %>% 
+  mgcv::gam(Count ~ s(bathy, k=3) + s(dist, k=3) + s(sst,k=3) + s(year, bs="re") + s(cruise.gen, bs = "re"),
+            data = .,
+            offset = log(Effort_sqkm),
+            family = 'nb')
 
-# forward selection 3
-get_gam(
-  base = c('bathy', 'dist'),
-  test = c('phyto', 'sst', 'temp_sd', 'salt', 'dth'),
-  species = 'GL',
-  training = daily_mbm_grid)
-# sst is the best model
+summary(GL_daily)
+# 35.3 % deviance expl. 
 
-# forward selection 4
-get_gam(
-  base = c('bathy', 'dist', 'sst'),
-  test = c('salt', 'dth'),
-  species = 'GL',
-  training = daily_mbm_grid)
-# delta-tide height is the best model // only nearly signif
-
-# forward selection 5
-get_gam(
-  base = c('bathy', 'dist', 'sst', 'dth'),
-  test = c('salt'),
-  species = 'GL',
-  training = daily_mbm_grid)
-# null is the best model
-
-### interspecies effects GL ----
-
-get_gam(
-  base = c('bathy', 'dist', 'sst'),
-  test = c('CoMu', 'HSeal', 'HPorp'),
-  species = 'All',
-  training = (interspeciesComp %>% rename('Density' = GL)))
-# CoMu improves model
-
-get_gam(
-  base = c('bathy', 'dist', 'sst', 'CoMu'),
-  test = c('HSeal', 'HPorp'),
-  species = 'All',
-  training = (interspeciesComp %>% rename('Density' = GL)))
-# HPorp is best 
-
-get_gam(
-  base = c('bathy', 'dist', 'sst', 'CoMu', 'HPorp'),
-  test = c('HSeal'),
-  species = 'All',
-  training = (interspeciesComp %>% rename('Density' = GL)))
-# null is best 
-
+# assess concurvity
+mgcv::concurvity(GL_daily, full = T)
+# bathy, dist, tcur, and sst are all high
+mgcv::concurvity(GL_daily, full = F)
+# tcur is correlated with bathy and dist, not significant, should remove
+# temp_sd has moderate concurvity with SST and is not significant, removing
+# dth is not significant so removing
 
 ### best model for GL ----
 GL_daily_mod <- 
@@ -289,6 +256,38 @@ summary(GL_daily_mod_interspecies)
 form_GL <- as.formula(summary(GL_daily_mod)$formula)
 
 ## common murre (gam) ----------------------------------------------------
+
+# select model terms
+daily_mbm_grid %>% 
+  filter(Species_code == 'CoMu') %>% 
+  mgcv::gam(Count ~ s(bathy, k=3) + s(topog, k=3) + s(dist, k=3) + s(tcur, k=3) + s(phyto, k=3) + s(sst,k=3) + s(temp_sd, k=3) + s(salt, k=3) + s(dth, k=3) + s(year, bs="re") + s(cruise.gen, bs = "re"),
+            data = .,
+            offset = log(Effort_sqkm),
+            family = 'nb',
+            select = TRUE) %>% 
+  summary() # terms are salt, phyto, topog, bathy, sst, temp_sd, dth
+
+# define the full model
+CoMu_daily <- 
+  daily_mbm_grid %>% 
+  filter(Species_code == 'GL') %>% 
+  mgcv::gam(Count ~ s(salt, k=3) + s(phyto, k=3) + s(topog,k=3) + s(bathy,k=3) + s(sst,k=3)  + s(year, bs="re"),
+            data = .,
+            offset = log(Effort_sqkm),
+            family = 'nb')
+
+summary(CoMu_daily)
+# 42.5 % deviance expl. 
+
+
+# assess concurvity
+mgcv::concurvity(CoMu_daily, full = T)
+# salt, phyto, and sst are all high
+mgcv::concurvity(CoMu_daily, full = F)
+# salt concurve with sst, temp_sd is correlated with bathy and dist, not significant, should remove
+# temp_sd has moderate concurvity with SST and is not significant, removing
+# dth is not significant so removing
+
 
 # forward selection 1
 get_gam(
