@@ -172,4 +172,31 @@ mgcv::concurvity(CoMu_daily_beta, full = F)
 # removing dist has a smaller negative impact on deviance explained
 
 
+# Tweedie Distribution ----------------------------------------------------
 
+# select model terms
+daily_mbm_grid %>% 
+  filter(Species_code == 'GL') %>% 
+  mgcv::gam(Count ~ s(bathy, bs = 'bs', m=c(3,1), k = 5) + s(topog, bs = 'bs', m=c(3,1), k = 5) + s(dist, bs = 'bs', m=c(3,1), k = 5) + s(tcur, bs = 'bs', m=c(3,1), k = 5) + s(phyto, bs = 'bs', m=c(3,1)) + s(sst, bs = 'bs', m=c(3,1)) + s(temp_sd, bs = 'bs', m=c(3,1)) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(year, bs="re") + s(cruise.gen, bs = "re"),
+            data = .,
+            offset = log(Effort_sqkm),
+            family = Tweedie(p = 1.9),
+            select = TRUE) %>% 
+  summary() # terms are bathy, dist, dth, topog, sst, tcur
+
+# define the full model
+GL_daily_tweedie <- 
+  daily_mbm_grid %>% 
+  filter(Species_code == 'GL') %>% 
+  mgcv::gam(Count ~ s(tcur, bs = 'bs', m=c(3,1), k = 5) + s(dth, bs = 'bs', m=c(3,1)) + s(year, bs="re"),
+            data = .,
+            offset = log(Effort_sqkm),
+            family = Tweedie(p = 1.9))
+
+summary(GL_daily_tweedie)
+# 44.8% dev. explained
+
+# test for concurvity
+mgcv::concurvity(GL_daily_tweedie, full = T)
+# high concurvity across the board
+mgcv::concurvity(GL_daily_tweedie, full = F)
