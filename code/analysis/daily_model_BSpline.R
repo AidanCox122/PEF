@@ -83,16 +83,6 @@ interspeciesComp <-
 # model construction ------------------------------------------------------
 
 ## HSeal -------------------------------------------------------------------
-HSeal_daily <- 
-  daily_mbm_grid %>% 
-  filter(Species_code == 'HSeal') %>% 
-  mgcv::gam(PresAbs ~ s(bathy, k=3) + s(dist, k=3) + s(sst,k=3) + s(dth, k=3) + s(year, bs="re") + s(cruise.gen, bs = "re"),
-            data = .,
-            family = 'binomial',
-            select = TRUE)
-
-summary(HSeal_daily)
-
 # B-spline
 # perform variable selection
 daily_mbm_grid %>% 
@@ -119,17 +109,6 @@ mgcv::concurvity(HSeal_daily_beta, full = T)
 # no high concurvity between fixed effects
 
 ## HPorp -------------------------------------------------------------------
-# Thin-Plate
-HPorp_daily <- 
-  daily_mbm_grid %>% 
-  filter(Species_code == 'HPorp') %>% 
-  mgcv::gam(PresAbs ~ s(dist, k=3) + s(year, bs="re") + s(cruise.gen, bs = "re"),
-            data = .,
-            family = 'binomial',
-            select = TRUE)
-
-summary(HPorp_daily)
-
 # B- Spline
 
 # perform variable selection
@@ -159,18 +138,6 @@ mgcv::concurvity(HPorp_daily_beta, full = T)
 
 
 ## GL ----------------------------------------------------------------------
-
-# define the full model
-GL_daily <- 
-  daily_mbm_grid %>% 
-  filter(Species_code == 'GL') %>% 
-  mgcv::gam(Count ~ s(bathy, k=3) + s(dist, k=3) + s(sst,k=3) + s(year, bs="re") + s(cruise.gen, bs = "re"),
-            data = .,
-            offset = log(Effort_sqkm),
-            family = 'nb')
-
-summary(GL_daily)
-
 # B-Spline
 
 # select model terms
@@ -207,17 +174,6 @@ mgcv::concurvity(GL_daily_beta, full = F)
 # dist also highly concurve with tcur
 
 ## CoMu --------------------------------------------------------------------
-
-CoMu_daily <- 
-  daily_mbm_grid %>% 
-  filter(Species_code == 'GL') %>% 
-  mgcv::gam(Count ~ s(bathy,k=3) + s(sst,k=3) + s(phyto, k=3) + s(salt, k=3) + s(topog,k=3) + s(year, bs="re"),
-            data = .,
-            offset = log(Effort_sqkm),
-            family = 'nb')
-
-summary(CoMu_daily)
-
 # B-Spline
 
 # select model terms
@@ -288,7 +244,7 @@ mgcv::concurvity(GL_daily_tweedie, full = F)
 
 # Leave-One-Out Validation ------------------------------------------------
 
-LYO_results <- data.frame()
+LYO_metrics <- data.frame()
 LYO_raw <- data.frame()
 for (y in unique(daily_mbm_grid$year)) {
   ## create train and test sets
@@ -319,15 +275,16 @@ for (y in unique(daily_mbm_grid$year)) {
   ## apply these models to test data
   
   test.full <- tibble()
+  performance.full <- tibble()
   
-  for(y in unique(daily_mbm_grid$Species_code)) {
+  for(x in unique(daily_mbm_grid$Species_code)) {
     # filter out data for testing
     test.species <- 
-      test %>% filter(Species_code == y) 
+      test %>% filter(Species_code == x) 
     
     # select model of interest
     model <- 
-      cv_models[[y]]
+      cv_models[[x]]
     
     # make predictions
     test.predicted <- 
@@ -335,12 +292,38 @@ for (y in unique(daily_mbm_grid$year)) {
       cbind(
         mgcv::predict.gam(model, newdata = test.species, exclude = c("s(year)"), newdata.guaranteed = T, type = 'response', se = T)) %>% 
       mutate(
-        Dev.Expl = summary(model)$dev.expl,
         Pred.Response = fit,
         Obs.Response = if_else(
           Species_code %in% c("HSeal", "HPorp"),
           PresAbs,
           Density),
+        # categorize seabird abundance into high(1) or low(0) based on time-series avg. density 
+        Obs.Cat = case_when(
+          # assign high low abundance to glaucous gull
+          Species_code == 'GL' &
+            Obs.Response >= (daily_mbm_grid %>%
+                              # this bit pulls out the time-series mean
+            filter(Species_code == 'GL') %>%
+            pull(Density) %>%
+            mean()) ~ 1,
+          Species_code == 'GL' &
+            Obs.Response < (daily_mbm_grid %>%
+                              filter(Species_code == 'GL') %>%
+                              pull(Density) %>%
+                              mean()) ~ 0,
+          # do the same thing for common murre
+          Species_code == 'CoMu' &
+            Obs.Response >= (daily_mbm_grid %>%
+                              filter(Species_code == 'CoMu') %>%
+                              pull(Density) %>%
+                              mean()) ~ 1,
+          Species_code == 'CoMu' &
+            Obs.Response < (daily_mbm_grid %>%
+                              filter(Species_code == 'CoMu') %>%
+                              pull(Density) %>%
+                              mean()) ~ 0,
+          Species_code %in% c("HSeal", "HPorp") ~ NA),
+          PresAbs,
         Response.Type = if_else(
           Species_code %in% c("HSeal", "HPorp"),
           'PresAbs',
@@ -378,51 +361,71 @@ for (y in unique(daily_mbm_grid$year)) {
         Avg.Pred.Response,
         `Pred.Rank` = if_else(
           Species_code %in% c('GL', 'CoMu'),
-          rank(Obs.Response, ties.method = 'average'),
+          rank(Pred.Response, ties.method = 'average'),
           rank(Avg.Pred.Response, ties.method = 'average'))) %>% 
       ungroup()
 
     
-    if(y %in% c('HSeal', 'HPorp')) {
+    if(x %in% c('HSeal', 'HPorp')) {
       O <- test.ranks %>%
-        filter(Species_code == y) %>%
+        filter(Species_code == x) %>%
         pull(Obs.Rank) %>% 
         head()} else{
           O <- test.ranks %>%
-            filter(Species_code == y) %>%
+            filter(Species_code == x) %>%
             pull(Obs.Rank)}
     
-    if(y %in% c('HSeal', 'HPorp')) {
+    if(x %in% c('HSeal', 'HPorp')) {
       R <- test.ranks %>% 
-        filter(Species_code == y) %>% 
+        filter(Species_code == x) %>% 
         pull(Pred.Rank) %>% 
         head()} else{
           R <- test.ranks %>% 
-            filter(Species_code == y) %>% 
+            filter(Species_code == x) %>% 
             pull(Pred.Rank)}
-    
-    # extract rho coefficient
-    test.predicted$spearman.rho <- cor.test(O, R, method = 'spearman')$estimate
-    # extract p-value
-    test.predicted$spearman.p <- cor.test(O, R, method = 'spearman')$p.value
-    
     
     test.full <- rbind(test.full, test.predicted)
     
+    # calculate the ROC and TSS
+    if(x %in% c('GL', 'CoMu')) {
+      test.roc <- 
+        roc(test.predicted$Obs.Cat, test.predicted$Pred.Response)
+      test.auc <- auc(test.predicted$Obs.Cat, test.predicted$Pred.Response)
+      } else{
+        test.roc <- 
+          roc(test.predicted$Obs.Response, test.predicted$Pred.Response)
+        test.auc <- auc(test.predicted$Obs.Response, test.predicted$Pred.Response)}
+    
+    # plot(test.roc)
+    
+    roc_data <- 
+      data.frame(sensitivity = test.roc$sensitivities, specificity = test.roc$specificities, thresholds = test.roc$thresholds) %>% 
+      mutate(TSS = (sensitivity + specificity) - 1)
+    
+    # store the success metrics
+    data <- tibble(
+      year = y,
+      species = x,
+      Dev.Expl = summary(model)$dev.expl,
+      AUC = test.auc,
+      TSS = max(roc_data$TSS),
+      `Obs:Pred` = mean(test.predicted$`Obs:Pred`),
+      `sd.Obs:Pred` = sd(test.predicted$`Obs:Pred`),
+      spearman.rho = cor.test(O, R, method = 'spearman')$estimate,
+      spearman.p = cor.test(O, R, method = 'spearman')$p.value)
+    
+    # save to repo
+    performance.full <- 
+      rbind(performance.full, data)
+  # tell the user you're done with species x
     print(
-      paste('Done with', y, sep = ' '))
+      paste('Done with', x, sep = ' '))
   }
   
-  data <- data.frame(
-    year = y,
-    species = c("HP", "HS", "CM", "GL"),
-    R.squared = c(summary(lm.HP)$r.sq, summary(lm.HS)$r.sq, summary(lm.CM)$r.sq, summary(lm.GL)$r.sq),
-    Dev.Expl = c(summary(lm.HP)$dev.ex, summary(lm.HS)$dev.ex, summary(lm.CM)$dev.ex, summary(lm.GL)$dev.ex)
-  )
-  LYO_raw <- rbind(LYO_raw, test.full[,c(1,2,13:24)])
-  LYO_results <- rbind(LYO_results, data)
+  LYO_raw <- rbind(LYO_raw, test.full[,-c(3:13)])
+  LYO_metrics <- rbind(LYO_metrics, performance.full)
   print(y)
-  rm(data, train, test, lm.HP, lm.HS, lm.CM, lm.GL)
+  rm(data, train, test, cv_models, performance.full, test.full, test.ranks, test.predicted, y, x, O, R)
 }
 
 # same process but for zones
