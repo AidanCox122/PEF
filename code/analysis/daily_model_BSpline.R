@@ -104,6 +104,16 @@ HSeal_daily_beta <-
 
 summary(HSeal_daily_beta)
 
+# test the interaction term
+HSeal.interact.01 <- 
+  daily_mbm_grid %>% 
+  filter(Species_code == 'HSeal') %>% 
+  mgcv::gam(PresAbs ~ s(dist, bs = 'bs', m=c(3,1), k=5) + s(sst, bs = 'bs', m=c(3,1)) + s(dist, by = sst, bs = 'bs', m = c(3,1), k=5) + s(year, bs="re") + s(cruise.gen, bs = "re"),
+            data = .,
+            family = 'binomial')
+
+summary(HSeal.interact.01) # interaction not significant - ignoring
+
 # test for concurvity
 mgcv::concurvity(HSeal_daily_beta, full = T)
 # no high concurvity between fixed effects
@@ -162,6 +172,17 @@ GL_daily_beta <-
 summary(GL_daily_beta)
 # 44.8% dev. explained
 
+# test the interaction term
+GL.interact.01 <- 
+  daily_mbm_grid %>% 
+  filter(Species_code == 'GL') %>% 
+  mgcv::gam(Count ~ s(tcur, bs = 'bs', m=c(3,1), k = 5) + s(dth, bs = 'bs', m=c(3,1)) + s(tcur, by = dth, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
+            data = .,
+            offset = log(Effort_sqkm),
+            family = 'nb')
+
+summary(GL.interact.01) # interaction not significant - ignoring
+
 # assess random effect terms
 mgcv::gam.vcomp(GL_daily_beta)
 mgcv::vcov.gam(GL_daily_beta) %>% summary() %>% View()
@@ -210,6 +231,44 @@ mgcv::concurvity(CoMu_daily_beta, full = F)
 # bathymetry and distance from shore are highly colinear
 # removing dist has a smaller negative impact on deviance explained
 
+# test the interaction term
+CoMu.interact.01 <- 
+  daily_mbm_grid %>% 
+  filter(Species_code == 'GL') %>% 
+  mgcv::gam(Count ~  s(bathy, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(bathy, by = salt, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
+            data = .,
+            offset = log(Effort_sqkm),
+            family = 'nb')
+
+summary(CoMu.interact.01) # interaction significant
+
+CoMu.interact.02 <- 
+  daily_mbm_grid %>% 
+  filter(Species_code == 'GL') %>% 
+  mgcv::gam(Count ~  s(bathy, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(bathy, by = dth, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
+            data = .,
+            offset = log(Effort_sqkm),
+            family = 'nb')
+
+summary(CoMu.interact.02) # interaction not significant
+
+CoMu.interact.03 <- 
+  daily_mbm_grid %>% 
+  filter(Species_code == 'GL') %>% 
+  mgcv::gam(Count ~  s(bathy, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(salt, by = dth, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
+            data = .,
+            offset = log(Effort_sqkm),
+            family = 'nb')
+
+summary(CoMu.interact.03) # interaction not significant
+
+
+vec_AIC <- c(AIC(CoMu_daily_beta), AIC(CoMu.interact.01), AIC(CoMu.interact.02), AIC(CoMu.interact.03))
+dAIC <- vec_AIC - min(vec_AIC)
+AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
+AICw
+
+# the results suggest that interaction 3 is best but still not significant
 
 # Tweedie Distribution ----------------------------------------------------
 
@@ -243,6 +302,8 @@ mgcv::concurvity(GL_daily_tweedie, full = F)
 
 
 # Leave-One-Out Validation ------------------------------------------------
+
+## Year --------------------------------------------------------------------
 
 LYO_metrics <- data.frame()
 LYO_raw <- data.frame()
@@ -290,7 +351,7 @@ for (y in unique(daily_mbm_grid$year)) {
     test.predicted <- 
       test.species %>% 
       cbind(
-        mgcv::predict.gam(model, newdata = test.species, exclude = c("s(year)"), newdata.guaranteed = T, type = 'response', se = T)) %>% 
+        mgcv::predict.gam(model, newdata = test.species, type = 'response', se = T)) %>% 
       mutate(
         Pred.Response = fit,
         Obs.Response = if_else(
@@ -302,34 +363,50 @@ for (y in unique(daily_mbm_grid$year)) {
           # assign high low abundance to glaucous gull
           Species_code == 'GL' &
             Obs.Response >= (daily_mbm_grid %>%
-                              # this bit pulls out the time-series mean
-            filter(Species_code == 'GL') %>%
-            pull(Density) %>%
-            mean()) ~ 1,
+                               # this bit pulls out the time-series mean
+                               filter(Species_code == 'GL') %>%
+                               pull(Density) %>%
+                               median()) ~ 1,
           Species_code == 'GL' &
             Obs.Response < (daily_mbm_grid %>%
                               filter(Species_code == 'GL') %>%
                               pull(Density) %>%
-                              mean()) ~ 0,
+                              median()) ~ 0,
           # do the same thing for common murre
           Species_code == 'CoMu' &
             Obs.Response >= (daily_mbm_grid %>%
-                              filter(Species_code == 'CoMu') %>%
-                              pull(Density) %>%
-                              mean()) ~ 1,
+                               filter(Species_code == 'CoMu') %>%
+                               pull(Density) %>%
+                               median()) ~ 1,
           Species_code == 'CoMu' &
             Obs.Response < (daily_mbm_grid %>%
                               filter(Species_code == 'CoMu') %>%
                               pull(Density) %>%
-                              mean()) ~ 0,
+                              median()) ~ 0,
           Species_code %in% c("HSeal", "HPorp") ~ NA),
-          PresAbs,
+        PresAbs,
         Response.Type = if_else(
           Species_code %in% c("HSeal", "HPorp"),
           'PresAbs',
-          'Density'),
-        `Obs:Pred` = (Obs.Response/Pred.Response)) %>% 
+          'Density')) %>% 
       dplyr::select(-c(Count, Density, PresAbs, fit))
+    
+    # calculate the proportion of observations marine mammals were present in zone x for each year
+    Obs.Prop.Table <- 
+      test.predicted %>%
+      group_by(Species_code, zone, year) %>%
+      summarize(
+        Obs.Prop = mean(Obs.Response) %>% round(digits = 2))
+    
+    test.predicted <- 
+      test.predicted %>% 
+      left_join(Obs.Prop.Table, by = c('Species_code', 'year', 'zone')) %>% 
+      mutate(
+        `Obs:Pred` = if_else(
+          Species_code %in% c('HSeal', 'HPorp'),
+          Obs.Prop/Pred.Response,
+          Obs.Response/Pred.Response))
+    
     
     # gather information for spearman's ranked correlation test
     # rank each zone in order of abundance for spearman's correlation
@@ -428,78 +505,198 @@ for (y in unique(daily_mbm_grid$year)) {
   rm(data, train, test, cv_models, performance.full, test.full, test.ranks, test.predicted, y, x, O, R)
 }
 
+
+## Zone --------------------------------------------------------------------
+
 # same process but for zones
-LZO_results <- data.frame()
+LZO_metrics <- data.frame()
 LZO_raw <- data.frame()
-for (z in unique(cv_base$zone)) {
+for (y in unique(daily_mbm_grid$zone)) {
   ## create train and test sets
-  train <- cv_base %>% filter(zone != z)
-  test <- cv_base %>% filter(zone == z)
+  counter = 1
+  train <- daily_mbm_grid %>% filter(zone != y)
+  test <- daily_mbm_grid %>% filter(zone == y)
   ## train a model for each species
-  lm.HP <- gam(formula = HPorp~s(bathy,k=3)+ s(sst,k=4) + s(salt, k=4),
-               family = poisson,
+  
+  cv_models <- 
+    list(
+      HPorp = gam(formula = formula.gam(HPorp_daily_beta),
+                  family = 'binomial',
+                  offset = log(Effort_sqkm),
+                  data = train %>% filter(Species_code == 'HPorp')),
+      HSeal = gam(formula = formula.gam(HSeal_daily_beta),
+                  family = 'binomial',
+                  offset = log(Effort_sqkm),
+                  data = train %>% filter(Species_code == 'HSeal')),
+      CoMu = gam(formula = formula.gam(CoMu_daily_beta),
+                 family = 'nb',
+                 offset = log(Effort_sqkm),
+                 data = train %>% filter(Species_code == 'CoMu')),
+      GL = gam(formula = formula.gam(GL_daily_beta),
+               family = 'nb',
                offset = log(Effort_sqkm),
-               data = train)
-  lm.HS <- gam(formula = HSeal~ s(bathy,k=3)+s(phyto,k=4),
-               family = poisson,
-               offset = log(Effort_sqkm),
-               data = train)
-  lm.CM <- gam(formula = CoMu~s(dist,k=3)+s(phyto,k=4)+s(temp_sd,k=4)+s(salt,k=4)+s(sst,k=4)+s(bathy,k=3),
-               family = poisson,
-               offset = log(Effort_sqkm),
-               data = train)
-  lm.GL <- gam(formula = GL~ s(bathy,k=3)+s(dist,k=3)+s(salt,k=5)+s(phyto,k=4)+s(temp_sd,k=4),
-               family = poisson,
-               offset = log(Effort_sqkm),
-               data = train)
+               data = train %>% filter(Species_code == 'GL')))
+  
   ## apply these models to test data
-  test.full <- 
-    test %>% 
-    mutate(
-      # predict values for harbor porpoise
-      HP.p = predict(lm.HP, newdata = test, type = "response", se = FALSE),
-      # round non-integer values produced be predict() function
-      HP.p = round(HP.p, digits = 0),
-      # cap prediction at highest observed value
-      HP.p = if_else(HP.p > max(train$HPorp),
-                     max(train$HPorp),
-                     HP.p),
-      # repeat for Harbor seal
-      HS.p = predict(lm.HS, newdata = test, type = "response", se = FALSE),
-      HS.p = round(HS.p, digits = 0),
-      HS.p = if_else(HS.p > max(train$HSeal),
-                     max(train$HSeal),
-                     HS.p),
-      # Common Murre
-      CM.p = predict(lm.CM, newdata = test, type = "response", se = FALSE),
-      CM.p = round(CM.p, digits = 0),
-      CM.p = if_else(CM.p > max(train$CoMu),
-                     max(train$CoMu),
-                     CoMu),
-      # Glaucous-winged gull
-      GL.p = predict(lm.GL, newdata = test, type = "response", se = FALSE),
-      GL.p = round(GL.p, digits = 0),
-      GL.p = if_else(GL.p > max(train$GL),
-                     max(train$GL),
-                     GL.p)) %>% 
-    # # convert zero values to very small numbers to avoid infinite predition error
-    # mutate_all( ~ ifelse( . == 0, 0.000001, .)) %>%
-    # calculate prediction error for each species in each zone
-    mutate(
-      d.HP = (((HPorp - HP.p) / HPorp) * 100),
-      d.HS = (((HSeal - HS.p) / HSeal) * 100),
-      d.CM = (((CoMu - CM.p) / CoMu) * 100),
-      d.GL = (((GL - GL.p) / GL) * 100))
   
-  data <- data.frame(
-    zone = z,
-    species = c("HP", "HS", "CM", "GL"),
-    R.squared = c(summary(lm.HP)$r.sq, summary(lm.HS)$r.sq, summary(lm.CM)$r.sq, summary(lm.GL)$r.sq),
-    Dev.Expl = c(summary(lm.HP)$dev.ex, summary(lm.HS)$dev.ex, summary(lm.CM)$dev.ex, summary(lm.GL)$dev.ex)
-  )
+  test.full <- tibble()
+  performance.full <- tibble()
   
-  LZO_raw <- rbind(LZO_raw, test.full[,c(1,2,13:24)])
-  LZO_results <- rbind(LZO_results, data)
-  print(z)
-  rm(data, train, test, lm.HP, lm.HS, lm.CM, lm.GL)
+  for(x in unique(daily_mbm_grid$Species_code)) {
+    # filter out data for testing
+    test.species <- 
+      test %>% filter(Species_code == x) 
+    
+    # select model of interest
+    model <- 
+      cv_models[[x]]
+    
+    # make predictions
+    test.predicted <- 
+      test.species %>% 
+      cbind(
+        mgcv::predict.gam(model, newdata = test.species, type = 'response', se = T)) %>% 
+      mutate(
+        Pred.Response = fit,
+        Obs.Response = if_else(
+          Species_code %in% c("HSeal", "HPorp"),
+          PresAbs,
+          Density),
+        # categorize seabird abundance into high(1) or low(0) based on time-series avg. density 
+        Obs.Cat = case_when(
+          # assign high low abundance to glaucous gull
+          Species_code == 'GL' &
+            Obs.Response >= (daily_mbm_grid %>%
+                               # this bit pulls out the time-series mean
+                               filter(Species_code == 'GL') %>%
+                               pull(Density) %>%
+                               median()) ~ 1,
+          Species_code == 'GL' &
+            Obs.Response < (daily_mbm_grid %>%
+                              filter(Species_code == 'GL') %>%
+                              pull(Density) %>%
+                              median()) ~ 0,
+          # do the same thing for common murre
+          Species_code == 'CoMu' &
+            Obs.Response >= (daily_mbm_grid %>%
+                               filter(Species_code == 'CoMu') %>%
+                               pull(Density) %>%
+                               median()) ~ 1,
+          Species_code == 'CoMu' &
+            Obs.Response < (daily_mbm_grid %>%
+                              filter(Species_code == 'CoMu') %>%
+                              pull(Density) %>%
+                              median()) ~ 0,
+          Species_code %in% c("HSeal", "HPorp") ~ NA),
+        PresAbs,
+        Response.Type = if_else(
+          Species_code %in% c("HSeal", "HPorp"),
+          'PresAbs',
+          'Density')) %>% 
+      dplyr::select(-c(Count, Density, PresAbs, fit))
+    
+    # calculate the proportion of observations marine mammals were present in zone x for each year
+    Obs.Prop.Table <- 
+      test.predicted %>%
+      group_by(Species_code, zone, year) %>%
+      summarize(
+        Obs.Prop = mean(Obs.Response) %>% round(digits = 2))
+    
+    test.predicted <- 
+      test.predicted %>% 
+      left_join(Obs.Prop.Table, by = c('Species_code', 'year', 'zone')) %>% 
+      mutate(
+        `Obs:Pred` = if_else(
+          Species_code %in% c('HSeal', 'HPorp'),
+          Obs.Prop/Pred.Response,
+          Obs.Response/Pred.Response))
+    
+    # gather information for spearman's ranked correlation test
+    # rank each zone in order of abundance for spearman's correlation
+    
+    test.ranks <-
+      test.predicted %>% 
+      # calculate prop. marine mammal sightings in each zone and average pred. prob. of occurance in each zone
+      group_by(Species_code, year) %>% 
+      mutate(
+        Obs.Prop = if_else(
+          Species_code %in% c('HSeal', 'HPorp'),
+          mean(Obs.Response) %>% round(digits = 2),
+          NA),
+        Avg.Pred.Response = if_else(
+          Species_code %in% c('HSeal', 'HPorp'),
+          mean(Pred.Response) %>% round(digits = 2),
+          NA)) %>%  #View()
+      ungroup() %>% 
+      transmute(
+        Date,
+        year,
+        zone,
+        Species_code,
+        Response.Type,
+        Obs.Response,
+        Obs.Prop,
+        `Obs.Rank` = if_else(
+          Species_code %in% c('GL', 'CoMu'),
+          rank(Obs.Response, ties.method = 'average'),
+          rank(Obs.Prop, ties.method = 'average')),
+        Pred.Response,
+        Avg.Pred.Response,
+        `Pred.Rank` = if_else(
+          Species_code %in% c('GL', 'CoMu'),
+          rank(Pred.Response, ties.method = 'average'),
+          rank(Avg.Pred.Response, ties.method = 'average'))) %>% 
+      ungroup() #%>% View()
+    
+    
+      O <- test.ranks %>%
+      filter(Species_code == x) %>%
+      pull(Obs.Rank)
+    
+    R <- test.ranks %>% 
+      filter(Species_code == x) %>% 
+      pull(Pred.Rank)
+    
+    test.full <- rbind(test.full, test.predicted)
+    
+    # calculate the ROC and TSS
+    if(x %in% c('GL', 'CoMu')) {
+      test.roc <- 
+        roc(test.predicted$Obs.Cat, test.predicted$Pred.Response)
+      test.auc <- auc(test.predicted$Obs.Cat, test.predicted$Pred.Response)
+    } else{
+      test.roc <- 
+        roc(test.predicted$Obs.Response, test.predicted$Pred.Response)
+      test.auc <- auc(test.predicted$Obs.Response, test.predicted$Pred.Response)}
+    
+    # plot(test.roc)
+    
+    roc_data <- 
+      data.frame(sensitivity = test.roc$sensitivities, specificity = test.roc$specificities, thresholds = test.roc$thresholds) %>% 
+      mutate(TSS = (sensitivity + specificity) - 1)
+    
+    # store the success metrics
+    data <- tibble(
+      year = y,
+      species = x,
+      Dev.Expl = summary(model)$dev.expl,
+      AUC = test.auc,
+      TSS = max(roc_data$TSS),
+      `Obs:Pred` = mean(test.predicted$`Obs:Pred`),
+      `sd.Obs:Pred` = sd(test.predicted$`Obs:Pred`),
+      spearman.rho = cor.test(O, R, method = 'spearman')$estimate,
+      spearman.p = cor.test(O, R, method = 'spearman')$p.value)
+    
+    # save to repo
+    performance.full <- 
+      rbind(performance.full, data)
+    # tell the user you're done with species x
+    print(
+      paste('Done with', x, sep = ' '))
+  }
+  
+  LZO_raw <- rbind(LZO_raw, test.full[,-c(3:13)])
+  LZO_metrics <- rbind(LZO_metrics, performance.full)
+  print(y)
+  rm(data, train, test, cv_models, performance.full, test.full, test.ranks, test.predicted, y, x, O, R)
 }
