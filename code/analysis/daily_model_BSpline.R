@@ -118,6 +118,8 @@ summary(HSeal.interact.01) # interaction not significant - ignoring
 mgcv::concurvity(HSeal_daily_beta, full = T)
 # no high concurvity between fixed effects
 
+rm(HSeal_interact_01)
+
 ## HPorp -------------------------------------------------------------------
 # B- Spline
 
@@ -145,7 +147,6 @@ mgcv::vcov.gam(HPorp_daily_beta) %>% summary() %>% View()
 
 # test for concurvity
 mgcv::concurvity(HPorp_daily_beta, full = T)
-
 
 ## GL ----------------------------------------------------------------------
 # B-Spline
@@ -193,6 +194,8 @@ mgcv::concurvity(GL_daily_beta, full = T)
 mgcv::concurvity(GL_daily_beta, full = F)
 # bathy highly concuve with dist, tcur
 # dist also highly concurve with tcur
+
+rm(GL_interact_01)
 
 ## CoMu --------------------------------------------------------------------
 # B-Spline
@@ -267,6 +270,8 @@ vec_AIC <- c(AIC(CoMu_daily_beta), AIC(CoMu.interact.01), AIC(CoMu.interact.02),
 dAIC <- vec_AIC - min(vec_AIC)
 AICw <- exp(-dAIC/2) / sum(exp(-dAIC/2))
 AICw
+
+rm(CoMu.interact.01, CoMu.interact.02, CoMu.interact.03)
 
 # the results suggest that interaction 3 is best but still not significant
 
@@ -351,9 +356,13 @@ for (y in unique(daily_mbm_grid$year)) {
     test.predicted <- 
       test.species %>% 
       cbind(
-        mgcv::predict.gam(model, newdata = test.species, type = 'response', se = T)) %>% 
+        mgcv::predict.gam(model, newdata = test.species, exclude = "s(year)", type = 'response', se = T)) %>% 
       mutate(
-        Pred.Response = fit,
+        Pred.Response = fit %>% round(digits = 2),
+        # convert 0 predicted response to 0.01 so that Obs:Pred can be calculated
+        Pred.Response = if_else(Pred.Response == 0,
+                                0.01,
+                                Pred.Response),
         Obs.Response = if_else(
           Species_code %in% c("HSeal", "HPorp"),
           PresAbs,
@@ -557,7 +566,11 @@ for (y in unique(daily_mbm_grid$zone)) {
       cbind(
         mgcv::predict.gam(model, newdata = test.species, type = 'response', se = T)) %>% 
       mutate(
-        Pred.Response = fit,
+        Pred.Response = fit %>% round(digits = 2),
+        # convert 0 predicted response to 0.01 so that Obs:Pred can be calculated
+        Pred.Response = if_else(Pred.Response == 0,
+                                0.01,
+                                Pred.Response),
         Obs.Response = if_else(
           Species_code %in% c("HSeal", "HPorp"),
           PresAbs,
