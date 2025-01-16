@@ -102,6 +102,7 @@ HSeal_daily_beta <-
             data = .,
             family = 'binomial')
 
+
 summary(HSeal_daily_beta)
 
 # test the interaction term

@@ -287,9 +287,33 @@ get_gam <-
 
 
 # Unscale Environmenal Variables ------------------------------------------
+vars <- c('bathy', 'topog', 'dist', 'tcur', 'phyto', 'sst', 'temp_sd', 'salt', 'dth')
+
+scale_factors <- tibble()
+for(x in vars) {
+  scale <- 
+    daily_mbm_grid %>% 
+    pull(x) %>% 
+    attr(., 'scaled:scale')
+  center <-
+    daily_mbm_grid %>% 
+    pull(x) %>% 
+    attr(., 'scaled:center')
+  # store the scaling data in a tibble
+  scale_info <- 
+    tibble(
+      variable = c(x),
+      scale = scale,
+      center = center)
+  # join to repository
+  scale_factors <-
+    rbind(scale_factors, scale_info)
+  #cleanup
+  rm(scale_info)
+  print(x)}
 
 unscale <- 
-  function(x, data, resolution = NULL){
+  function(x, data, resolution = 'fine'){
     if(resolution != "coarse" & resolution != "fine"){
       stop('Unknown value specified for model resolution. Please specify either fine or coarse')}
     
