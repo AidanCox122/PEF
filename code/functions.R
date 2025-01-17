@@ -1,4 +1,5 @@
 
+source('code/setup.R')
 
 # check for strings -------------------------------------------------------
 replace_k3_with_k4_stringr <- function(input_string) {
