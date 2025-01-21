@@ -303,12 +303,12 @@ HSfine_dist_plot <-
   HSFine2_dist %>%
   unscale('dist', ., resolution = 'fine') %>%
   mutate(`Year` = factor(year),
-         `Cruise #` = factor(cruise.gen, levels = c(1,2,3,4,5,6,7), ordered = T)) %>% 
+         `Survey #` = factor(cruise.gen, levels = c(1,2,3,4,5,6,7), ordered = T)) %>% 
   filter(Year == 2017 | Year == 2020) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = dist/1000, y = fit , ymin = LL, ymax = UL, group = `Cruise #`, fill = `Year`), alpha = 0.1) + 
-  geom_line(aes(x = dist/1000, y = fit, color = `Year`, alpha = `Cruise #`)) +
+  geom_ribbon(aes(x = dist/1000, y = fit , ymin = LL, ymax = UL, group = `Survey #`, fill = `Year`), alpha = 0.1) + 
+  geom_line(aes(x = dist/1000, y = fit, color = `Year`, alpha = `Survey #`)) +
   # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('dist', ., resolution = 'fine') %>%
   #                      mutate(dist = round(dist,0)) %>%
   #                      group_by(dist, zone) %>%
@@ -360,12 +360,12 @@ HSfine_sst_plot <-
   HSFine2_sst %>%
   unscale('sst', ., resolution = 'fine') %>%
   mutate(`Year` = factor(year),
-         `Cruise #` = factor(cruise.gen, levels = c(1,2,3,4,5,6,7), ordered = T)) %>% 
+         `Survey #` = factor(cruise.gen, levels = c(1,2,3,4,5,6,7), ordered = T)) %>% 
   filter(Year == 2017 | Year == 2020) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = sst, y = fit , ymin = LL, ymax = UL, group = `Cruise #`, fill = `Year`), alpha = 0.1) + 
-  geom_line(aes(x = sst, y = fit, color = `Year`, alpha = `Cruise #`)) +
+  geom_ribbon(aes(x = sst, y = fit , ymin = LL, ymax = UL, group = `Survey #`, fill = `Year`), alpha = 0.1) + 
+  geom_line(aes(x = sst, y = fit, color = `Year`, alpha = `Survey #`)) +
   # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('dist', ., resolution = 'fine') %>%
   #                      mutate(dist = round(dist,0)) %>%
   #                      group_by(dist, zone) %>%
@@ -415,12 +415,12 @@ HPfine_dist_plot <-
   HPFine2_dist %>%
   unscale('dist', ., resolution = 'fine') %>%
   mutate(`Year` = factor(year),
-         `Cruise #` = factor(cruise.gen, levels = c(1,2,3,4,5,6,7), ordered = T)) %>% 
+         `Survey #` = factor(cruise.gen, levels = c(1,2,3,4,5,6,7), ordered = T)) %>% 
   filter(Year == 2017 | Year == 2020) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = dist/1000, y = fit , ymin = LL, ymax = UL, group = `Cruise #`, fill = `Year`), alpha = 0.1) + 
-  geom_line(aes(x = dist/1000, y = fit, color = `Year`, alpha = `Cruise #`)) +
+  geom_ribbon(aes(x = dist/1000, y = fit , ymin = LL, ymax = UL, group = `Survey #`, fill = `Year`), alpha = 0.1) + 
+  geom_line(aes(x = dist/1000, y = fit, color = `Year`, alpha = `Survey #`)) +
   # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('dist', ., resolution = 'fine') %>%
   #                      mutate(dist = round(dist,0)) %>%
   #                      group_by(dist, zone) %>%
