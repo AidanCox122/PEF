@@ -91,7 +91,7 @@ daily_mbm_grid %>%
             data = .,
             family = 'binomial',
             select = TRUE) %>% 
-  summary() # dist, tcur, bathy, topog, sst, and dth
+  summary() # dist, tcur, bathy, topog, sst
 
 # parameterize the full model
 # remove tcur, dth, and topog, not signif
@@ -160,7 +160,7 @@ daily_mbm_grid %>%
             offset = log(Effort_sqkm),
             family = 'nb',
             select = TRUE) %>% 
-  summary() # terms are bathy, dist, dth, topog, sst
+  summary() # terms are bathy, dist, tcur, sst, dth
 
 # define the full model
 GL_daily_beta <- 
