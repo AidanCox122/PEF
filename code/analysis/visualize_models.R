@@ -117,7 +117,11 @@ GLFine2_dth <-
 
 GLFine2_dth <- within(GLFine2_dth, {
   LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)})
+  UL <- fit + (1.96 * se.fit)}) %>% 
+  mutate(
+    LL = if_else(LL <=0,
+                 0,
+                 LL))
 
 GLfine_dth_plot <- 
   GLFine2_dth %>%
@@ -127,6 +131,7 @@ GLfine_dth_plot <-
   # plot effect for a low abundance cruise
   geom_ribbon(aes(x = dth, y = fit, ymin = LL, ymax = UL, fill = Year), alpha = 0.1) + 
   geom_line(aes(x = dth, y = fit, color = `Year`)) +
+  scale_y_continuous(limits = c(0,38)) +
   scale_color_viridis(discrete = T) +
   scale_fill_viridis(discrete = T) +
   # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('dth', ., resolution = 'fine')), aes(x = dth, y = Density), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
@@ -231,7 +236,11 @@ CMFine2_dth <-
 
 CMFine2_dth <- within(CMFine2_dth, {
   LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)})
+  UL <- fit + (1.96 * se.fit)}) %>% 
+  mutate(
+    LL = if_else(LL <= 0,
+                 0,
+                 LL))
 
 CMfine_dth_plot <- 
   CMFine2_dth %>%
@@ -298,18 +307,24 @@ HSfine_dist_plot <-
   filter(Year == 2017 | Year == 2020) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = dist/1000, y = fit , ymin = LL, ymax = UL, fill = `Cruise #`), alpha = 0.1) + 
-  geom_line(aes(x = dist/1000, y = fit, color = `Cruise #`)) +
+  geom_ribbon(aes(x = dist/1000, y = fit , ymin = LL, ymax = UL, group = `Cruise #`, fill = `Year`), alpha = 0.1) + 
+  geom_line(aes(x = dist/1000, y = fit, color = `Year`, alpha = `Cruise #`)) +
   # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('dist', ., resolution = 'fine') %>%
   #                      mutate(dist = round(dist,0)) %>%
   #                      group_by(dist, zone) %>%
   #                      summarize(dist = mean(dist),
-  #                                prob = mean(PresAbs))), aes(x = dist, y = prob), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  #                                prob = mean(PresAbs))), aes(x = dist/1000, y = prob), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   scale_y_continuous(limits = c(0, 1)) +
+  scale_alpha_discrete(range = c(0.5, 1)) +
+  scale_color_manual(values = c("#482878FF", "#5DC863FF")) +
+  scale_fill_manual(values = c("#482878FF", "#5DC863FF")) +
   facet_wrap(~Year) +
   xlab("Distance from Shore (km)") +
   ylab("Predicted Probability of Harbor Seal Encounter (% Chance)") +
+  guides(color = 'none', fill = 'none') +
   theme_classic() # predicted probability of harbor seal encounter drops to near 0 after 1km from shore
+
+# ggsave(paste0('products/figure3/raw/', Sys.Date(), '_HS_dist.tiff'), device = 'tiff', plot = HSfine_dist_plot, width = 5, height = 4, units = 'in', dpi = 500)
 
 # sst
 # distance form shore
@@ -349,17 +364,21 @@ HSfine_sst_plot <-
   filter(Year == 2017 | Year == 2020) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = sst, y = fit , ymin = LL, ymax = UL, fill = `Cruise #`), alpha = 0.1) + 
-  geom_line(aes(x = sst, y = fit, color = `Cruise #`)) +
+  geom_ribbon(aes(x = sst, y = fit , ymin = LL, ymax = UL, group = `Cruise #`, fill = `Year`), alpha = 0.1) + 
+  geom_line(aes(x = sst, y = fit, color = `Year`, alpha = `Cruise #`)) +
   # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('dist', ., resolution = 'fine') %>%
   #                      mutate(dist = round(dist,0)) %>%
   #                      group_by(dist, zone) %>%
   #                      summarize(dist = mean(dist),
   #                                prob = mean(PresAbs))), aes(x = dist, y = prob), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   scale_y_continuous(limits = c(0, 1)) +
+  scale_alpha_discrete(range = c(0.5, 1)) +
+  scale_color_manual(values = c("#482878FF", "#5DC863FF")) +
+  scale_fill_manual(values = c("#482878FF", "#5DC863FF")) +
   facet_wrap(~Year) +
   xlab("Sea Surface Temperature (ºC))") +
   ylab("Predicted Probability of Harbor Seal Encounter (% Chance)") +
+  guides(color = 'none', fill = 'none') +
   theme_classic() # gulls are more common at higher current speeds
 
 # Harbor Porpoise ---------------------------------------------------------
@@ -400,17 +419,56 @@ HPfine_dist_plot <-
   filter(Year == 2017 | Year == 2020) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = dist/1000, y = fit , ymin = LL, ymax = UL, fill = `Cruise #`), alpha = 0.1) + 
-  geom_line(aes(x = dist/1000, y = fit, color = `Cruise #`)) +
+  geom_ribbon(aes(x = dist/1000, y = fit , ymin = LL, ymax = UL, group = `Cruise #`, fill = `Year`), alpha = 0.1) + 
+  geom_line(aes(x = dist/1000, y = fit, color = `Year`, alpha = `Cruise #`)) +
   # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('dist', ., resolution = 'fine') %>%
   #                      mutate(dist = round(dist,0)) %>%
   #                      group_by(dist, zone) %>%
   #                      summarize(dist = mean(dist),
   #                                prob = mean(PresAbs))), aes(x = dist, y = prob), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   scale_y_continuous(limits = c(0, 1)) +
+  scale_alpha_discrete(range = c(0.5, 1)) +
+  scale_color_manual(values = c("#482878FF", "#5DC863FF")) +
+  scale_fill_manual(values = c("#482878FF", "#5DC863FF")) +
   facet_wrap(~Year) +
   xlab("Distance from Shore (km)") +
   ylab("Predicted Probability of Harbor Porpoise Encounter (% Chance)") +
+  guides(color = 'none', fill = 'none') +
   theme_classic() # gulls are more common at higher current speeds
 
+
+# Save Fig.3 --------------------------------------------------------------
+
+zone_comp_plots <-
+  list(
+    CMfine_bathy_plot,
+    CMfine_salt_plot,
+    CMfine_dth_plot,
+    GLfine_tcur_plot,
+    GLfine_dth_plot,
+    HSfine_dist_plot,
+    HSfine_sst_plot,
+    HPfine_dist_plot) %>% 
+  set_names(
+    c(
+      'CM_bathy',
+      'CM_salt',
+      'CM_dth',
+      'GL_tcur',
+      'GL_dth',
+      'HS_dist',
+      'HS_sst',
+      'HP_dist'))
+
+for (x in names(zone_comp_plots)) {
+  fname <-
+    paste0('products/figure3/raw/', Sys.Date(), '_', (x), '.tiff')
+  ggsave(fname,
+         zone_comp_plots[[x]],
+         device = 'tiff',
+         width = 6,
+         height = 4.5,
+         dpi = 500,
+         units = 'in')
+  print(paste('Done with', x))}
 

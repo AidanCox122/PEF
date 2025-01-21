@@ -13,7 +13,8 @@ library(tidyverse)
 
 mbm_data <- 
   read_csv('data/clean/mbm_master.csv') %>% 
-  rename(species = `Species_code`)
+  rename(species = `Species_code`) %>% 
+  mutate(Zone = factor(Zone, levels = rev(c(1,2,3,4,5,6)), ordered = T))
 
 
 # species comparisons -----------------------------------------------------
@@ -33,30 +34,36 @@ pairwise.wilcox.test(GL.kw$Density, GL.kw$Zone,
 GL_zone_comp <- 
   GL.kw %>% 
   mutate(species = 'Glaucous-winged Gull') %>% 
-  ggplot(aes(x = factor(Zone), y = Density, color = factor(Zone))) +
+  ggplot(aes(x = Zone, y = Density, color = Zone)) +
   geom_jitter(alpha = 0.5) +
   geom_boxplot(color = "black", fill = NA) +
-  annotate(geom = "text", x = 1, y = 80, label = "a", color = "grey22", fontface = "italic") +
-  annotate(geom = "text", x = 2, y = 80, label = "a", color = "grey22", fontface = "italic") +
-  geom_rect(aes(xmin = 0.5, xmax = 2.45, ymin = 0, ymax = 90), fill = NA, color = "grey", alpha = 0.6) +
-  annotate(geom = "text", x = 3, y = 80, label = "b", color = "grey22", fontface = "italic") +
-  annotate(geom = "text", x = 4, y = 80, label = "b", color = "grey22", fontface = "italic") +
-  annotate(geom = "text", x = 5, y = 80, label = "c", color = "grey22", fontface = "italic") +
-  annotate(geom = "text", x = 6, y = 80, label = "b", color = "grey22", fontface = "italic") +
-  geom_rect(aes(xmin = 4.55, xmax = 5.45, ymin = 0, ymax = 90), fill = NA, color = "grey", alpha = 0.6) +
+  annotate(geom = "text", x = 6, y = 95, label = "a", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 5, y = 95, label = "a", color = "grey22", fontface = "italic") +
+  geom_rect(aes(xmin = 1.5, xmax = 2.5, ymin = -2.5, ymax = 110), fill = NA, color = "grey", alpha = 0.6) +
+  annotate(geom = "text", x = 4, y = 95, label = "b", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 3, y = 95, label = "b", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 2, y = 95, label = "c", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 1, y = 95, label = "b", color = "grey22", fontface = "italic") +
+  geom_rect(aes(xmin = 4.5, xmax = 6.5, ymin = -2.5, ymax = 110), fill = NA, color = "grey", alpha = 0.6) +
   coord_flip() +
+  scale_color_discrete(direction = -1) +
   xlab('Transect Zone') +
   ylab("Density (indv./km2)") +
   facet_grid(species~.) +
   theme_classic() + 
   theme(legend.position = "bottom") 
 
+# densities by zone
+GL.kw %>% 
+  group_by(Zone) %>% 
+  summarize(
+    mean.Density = mean(Density),
+    SD.Density = sd(Density))
 
 ## common murre ------------------------------------------------------------
 
 CM.kw <- 
-  mbm_data %>% filter(species == "CoMu") %>% 
-  mutate(Zone = factor(Zone))
+  mbm_data %>% filter(species == "CoMu")
 
 # run an anova on the data
 kruskal.test(Density ~ Zone, data = CM.kw) # there are highly significant differences between the zones
@@ -72,28 +79,35 @@ CM_zone_comp <-
   ggplot(aes(x = Zone, y = Density, color = Zone)) +
   geom_jitter(alpha = 0.5) +
   geom_boxplot(color = "black", fill = NA) +
-  annotate(geom = "text", x = 1, y = 170, label = "a", color = "grey22", fontface = "italic") +
-  annotate(geom = "text", x = 2, y = 170, label = "a", color = "grey22", fontface = "italic") +
-  geom_rect(aes(xmin = 0.5, xmax = 2.45, ymin = 0, ymax = 180), fill = NA, color = "grey", alpha = 0.6) +
-  annotate(geom = "text", x = 3, y = 170, label = "b", color = "grey22", fontface = "italic") +
-  annotate(geom = "text", x = 4, y = 170, label = "b", color = "grey22", fontface = "italic") +
-  annotate(geom = "text", x = 5, y = 170, label = "b", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 6, y = 950, label = "a", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 5, y = 950, label = "a", color = "grey22", fontface = "italic") +
+  geom_rect(aes(xmin = 4.5, xmax = 6.5, ymin = -20, ymax = 1000), fill = NA, color = "grey", alpha = 0.6) +
+  annotate(geom = "text", x = 4, y = 950, label = "b", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 3, y = 950, label = "b", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 2, y = 950, label = "b", color = "grey22", fontface = "italic") +
   # geom_rect(aes(xmin = 2.55, xmax = 5.45, ymin = 0, ymax = 180), fill = NA, color = "grey", alpha = 0.6) +
-  annotate(geom = "text", x = 6, y = 170, label = "c", color = "grey22", fontface = "italic")+
-  geom_rect(aes(xmin = 5.55, xmax = 6.5, ymin = 0, ymax = 180), fill = NA, color = "grey", alpha = 0.6) +
+  annotate(geom = "text", x = 1, y = 950, label = "c", color = "grey22", fontface = "italic")+
+  geom_rect(aes(xmin = 0.5, xmax = 1.5, ymin = -20, ymax = 1000), fill = NA, color = "grey", alpha = 0.6) +
   coord_flip() +
+  scale_color_discrete(direction = -1) +
   xlab('Transect Zone') +
   ylab("Density (indv./km2)") +
   facet_grid(species~.) +
   theme_classic() + 
   theme(legend.position = "bottom")
 
+# densities by zone
+CM.kw %>% 
+  group_by(Zone) %>% 
+  summarize(
+    mean.Density = mean(Density),
+    SD.Density = sd(Density)) %>% View()
+
 ## Harbor seal -----------------------------------------------------------
 
 HSeal <- 
   mbm_data %>% 
-  filter(species == "HSeal") %>% 
-  mutate(Zone = factor(Zone))
+  filter(species == "HSeal") 
 
 # run an anova on the data 
 kruskal.test(Density ~ Zone, data = HSeal) # there are highly significant differences between the zones
@@ -109,25 +123,31 @@ HS_zone_comp <-
   ggplot(aes(x = Zone, y = Density, color = Zone)) +
   geom_jitter(alpha = 0.5) +
   geom_boxplot(color = "black", fill = NA) +
-  annotate(geom = "text", x = 1, y = 15, label = "a", color = "grey22", fontface = "italic") +
-  annotate(geom = "text", x = 2, y = 15, label = "a", color = "grey22", fontface = "italic") +
-  annotate(geom = "text", x = 3, y = 15, label = "b", color = "grey22", fontface = "italic") +
-  annotate(geom = "text", x = 4, y = 15, label = "b", color = "grey22", fontface = "italic") +
-  annotate(geom = "text", x = 5, y = 15, label = "b", color = "grey22", fontface = "italic") +
-  geom_rect(aes(xmin = 2.55, xmax = 5.45, ymin = 0, ymax = 20), fill = NA, color = "grey", alpha = 0.6) +
-  annotate(geom = "text", x = 6, y = 15, label = "a", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 6, y = 28, label = "a", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 5, y = 28, label = "a", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 4, y = 28, label = "b", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 3, y = 28, label = "b", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 2, y = 28, label = "b", color = "grey22", fontface = "italic") +
+  geom_rect(aes(xmin = 1.5, xmax = 4.5, ymin = -1.2, ymax = 30), fill = NA, color = "grey", alpha = 0.6) +
+  annotate(geom = "text", x = 1, y = 28, label = "a", color = "grey22", fontface = "italic") +
   coord_flip() +
+  scale_color_discrete(direction = -1) +
   xlab('Transect Zone') +
   ylab("Density (indv./km2)") +
   facet_grid(species~.) +
   theme_classic() + 
   theme(legend.position = "bottom") 
 
+# densities by zone
+HSeal %>% 
+  group_by(Zone) %>% 
+  summarize(
+    mean.Density = mean(Density),
+    SD.Density = sd(Density)) %>% View()
+
 # harbor porpoise ---------------------------------------------------------
 
-HPorp <- mbm_data %>% filter(species == "HPorp") %>% 
-  mutate(Zone = factor(Zone))
-
+HPorp <- mbm_data %>% filter(species == "HPorp")
 # run an anova on the data
 kruskal.test(Density ~ Zone, data = HPorp) # there are highly significant differences between the zones
 
@@ -142,20 +162,27 @@ HP_zone_comp <-
   ggplot(aes(x = Zone, y = Density, color = Zone)) +
   geom_jitter(alpha = 0.5) +
   geom_boxplot(color = "black", fill = NA) +
-  annotate(geom = "text", x = 1, y = 06, label = "a", color = "grey22", fontface = "italic") +
-  annotate(geom = "text", x = 2, y = 06, label = "b", color = "grey22", fontface = "italic") +
-  annotate(geom = "text", x = 3, y = 06, label = "b", color = "grey22", fontface = "italic") +
-  annotate(geom = "text", x = 4, y = 06, label = "b", color = "grey22", fontface = "italic") +
-  geom_rect(aes(xmin = 1.55, xmax = 4.45, ymin = 0, ymax = 08), fill = NA, color = "grey", alpha = 0.6) +
-  annotate(geom = "text", x = 5, y = 06, label = "a", color = "grey22", fontface = "italic") +
-  annotate(geom = "text", x = 6, y = 06, label = "a", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 6, y = 18, label = "a", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 5, y = 18, label = "b", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 4, y = 18, label = "b", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 3, y = 18, label = "b", color = "grey22", fontface = "italic") +
+  geom_rect(aes(xmin = 2.5, xmax = 5.5, ymin = -0.6, ymax = 19), fill = NA, color = "grey", alpha = 0.6) +
+  annotate(geom = "text", x = 2, y = 18, label = "a", color = "grey22", fontface = "italic") +
+  annotate(geom = "text", x = 1, y = 18, label = "a", color = "grey22", fontface = "italic") +
   coord_flip() +
+  scale_color_discrete(direction = -1) +
   xlab('Transect Zone') +
   ylab("Density (indv./km2)") +
   facet_grid(species~.) +
   theme_classic() + 
   theme(legend.position = "bottom")
 
+# densities by zone
+HPorp %>% 
+  group_by(Zone) %>% 
+  summarize(
+    mean.Density = mean(Density),
+    SD.Density = sd(Density)) %>% View()
 
 # Save figure 2 -----------------------------------------------------------
 
@@ -174,11 +201,13 @@ zone_comp_plots <-
 
 for (x in names(zone_comp_plots)) {
   fname <-
-    paste0('products/figure2/raw/', (x), '.jpg')
+    paste0('products/figure2/raw/', Sys.Date(), '_', (x), '.tiff')
   ggsave(fname,
          zone_comp_plots[[x]],
+         device = 'tiff',
          width = 4.48,
          height = 3.36,
+         dpi = 500,
          units = 'in')
   print(paste('Done with', x))}
 

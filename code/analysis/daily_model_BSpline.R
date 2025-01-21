@@ -714,3 +714,29 @@ for (y in unique(daily_mbm_grid$zone)) {
   print(y)
   rm(data, train, test, cv_models, performance.full, test.full, test.ranks, test.predicted, y, x, O, R)
 }
+
+# table 5
+# LYO
+LYO_metrics %>% 
+  group_by(species) %>% 
+  summarise(
+    Avg.Dev.Expl = mean(Dev.Expl),
+    SD.Dev.Expl = sd(Dev.Expl),
+    # spacer
+    Avg.AUC = mean(AUC),
+    sd.AUC = sd(AUC),
+    # spacer
+    Avg.TSS = mean(TSS),
+    sd.TSS. = sd(TSS))
+# LZO
+LZO_metrics %>% 
+  group_by(species) %>% 
+  summarise(
+    Avg.Dev.Expl = mean(Dev.Expl),
+    SD.Dev.Expl = sd(Dev.Expl),
+    # spacer
+    Avg.AUC = mean(AUC),
+    sd.AUC = sd(AUC),
+    # spacer
+    Avg.TSS = mean(TSS),
+    sd.TSS. = sd(TSS))

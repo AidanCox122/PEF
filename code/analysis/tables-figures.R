@@ -8,10 +8,12 @@ source('code/functions.R')
 
 
 
-# Env. Condition Summary --------------------------------------------------
+# Figure 1b --------------------------------------------------
 
 # phyto
-daily_mbm_grid %>% 
+phyto <- 
+  daily_mbm_grid %>% 
+  filter(Species_code == 'GL') %>% 
   unscale('phyto', ., resolution = 'fine') %>% 
   dplyr::select(Date, zone, phyto, sst, temp_sd, salt, dth) %>%
   # pivot_longer(cols = phyto:dth, names_to = 'variable', values_to = 'Value') %>% 
@@ -23,7 +25,9 @@ daily_mbm_grid %>%
   theme_classic()
 
 # sst
-daily_mbm_grid %>% 
+sst <- 
+  daily_mbm_grid %>%
+  filter(Species_code == 'GL') %>% 
   unscale('sst', ., resolution = 'fine') %>% 
   dplyr::select(Date, zone, phyto, sst, temp_sd, salt, dth) %>%
   # pivot_longer(cols = phyto:dth, names_to = 'variable', values_to = 'Value') %>% 
@@ -35,7 +39,9 @@ daily_mbm_grid %>%
   theme_classic()
 
 # sdSST
-daily_mbm_grid %>% 
+sdSST <- 
+  daily_mbm_grid %>% 
+  filter(Species_code == 'GL') %>% 
   unscale('temp_sd', ., resolution = 'fine') %>% 
   dplyr::select(Date, zone, phyto, sst, temp_sd, salt, dth) %>%
   # pivot_longer(cols = phyto:dth, names_to = 'variable', values_to = 'Value') %>% 
@@ -47,7 +53,9 @@ daily_mbm_grid %>%
   theme_classic()
   
 # salt
-daily_mbm_grid %>% 
+salt <- 
+  daily_mbm_grid %>% 
+  filter(Species_code == 'GL') %>% 
   unscale('salt', ., resolution = 'fine') %>% 
   dplyr::select(Date, zone, phyto, sst, temp_sd, salt, dth) %>%
   # pivot_longer(cols = phyto:dth, names_to = 'variable', values_to = 'Value') %>% 
@@ -59,7 +67,9 @@ daily_mbm_grid %>%
   theme_classic()
 
 # dth
-daily_mbm_grid %>% 
+dth <- 
+  daily_mbm_grid %>% 
+  filter(Species_code == 'GL' & zone == 1) %>% 
   unscale('dth', ., resolution = 'fine') %>% 
   dplyr::select(Date, zone, phyto, sst, temp_sd, salt, dth) %>%
   # pivot_longer(cols = phyto:dth, names_to = 'variable', values_to = 'Value') %>% 
@@ -69,6 +79,36 @@ daily_mbm_grid %>%
   scale_x_continuous(breaks = NULL) +
   labs(x = '', y = '∆ Tide Height (m)') +
   theme_classic()
+
+## save fig 1b ----
+
+env_comp_plots <-
+  list(
+    phyto,
+    sst,
+    sdSST,
+    salt,
+    dth) %>% 
+  set_names(
+    c(
+      'phyto',
+      'sst',
+      'sdSST',
+      'salt',
+      'dth'))
+
+for (x in names(env_comp_plots)) {
+  fname <-
+    paste0('products/figure1/raw/', Sys.Date(), '_', (x), '.tiff')
+  ggsave(fname,
+         env_comp_plots[[x]],
+         device = 'tiff',
+         width = 4.48,
+         height = 3.36,
+         dpi = 500,
+         units = 'in')
+  print(paste('Done with', x))}
+
 
 # Table 2 -----------------------------------------------------------------
 
@@ -109,32 +149,3 @@ mbm_data %>%
     Avg.Density = mean(Density) %>% round(digits = 2),
     max.Density = max(Density) %>% round(digits = 2)) %>% View()
 
-
-# Table 5 -----------------------------------------------------------------
-
-
-# summarize cross validation metrics
-# year
-LYO_metrics %>%
-  group_by(species) %>%
-  summarize(
-    Dev.Expl = mean(Dev.Expl, na.rm = T),
-    AUC = mean(AUC, na.rm = T),
-    TSS = mean(TSS, na.rm = T),
-    `Obs:Pred` = mean(`Obs:Pred`, na.rm = T),
-    `sd.Obs:Pred` = mean(`sd.Obs:Pred`, na.rm = T),
-    spearman.rho = mean(spearman.rho, na.rm = T),
-    spearman.p = mean(spearman.p, na.rm = T)) %>% View()
-
-# zone
-
-LZO_metrics %>%
-  group_by(species) %>%
-  summarize(
-    Dev.Expl = mean(Dev.Expl, na.rm = T),
-    AUC = mean(AUC, na.rm = T),
-    TSS = mean(TSS, na.rm = T),
-    `Obs:Pred` = mean(`Obs:Pred`, na.rm = T),
-    `sd.Obs:Pred` = mean(`sd.Obs:Pred`, na.rm = T),
-    spearman.rho = mean(spearman.rho, na.rm = T),
-    spearman.p = mean(spearman.p, na.rm = T)) %>% View()
