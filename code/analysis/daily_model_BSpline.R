@@ -73,12 +73,12 @@ daily_mbm_grid <-
     year = factor(year, levels = c(2017, 2018, 2019, 2020, 2021, ordered = T)),
     cruise.gen = factor(cruise.gen, levels = c(1,2,3,4,5,6,7), ordered = T))
 
-interspeciesComp <- 
-  daily_mbm_grid %>% 
-  dplyr::select(Date:dth, year, Species_code, Density) %>% 
-  pivot_wider(names_from = Species_code,
-              values_from = Density) %>% 
-  mutate(Species_code = 'All')
+# average density by species in modeling period
+daily_mbm_grid %>% 
+  group_by(Species_code) %>% 
+  summarise(
+    meanDensity = mean(Density),
+    sdDensity = sd(Density))
 
 # model construction ------------------------------------------------------
 
@@ -215,13 +215,13 @@ daily_mbm_grid %>%
 CoMu_daily_beta <- 
   daily_mbm_grid %>% 
   filter(Species_code == 'GL') %>% 
-  mgcv::gam(Count ~  s(bathy, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(year, bs="re"),
+  mgcv::gam(Count ~  s(dist, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(year, bs="re"),
             data = .,
             offset = log(Effort_sqkm),
             family = 'nb')
 
 summary(CoMu_daily_beta)
-# 44.2% dev. explained
+# 42.3% dev. explained
 
 # assess random effect terms
 mgcv::gam.vcomp(CoMu_daily_beta)
@@ -238,8 +238,8 @@ mgcv::concurvity(CoMu_daily_beta, full = F)
 # test the interaction term
 CoMu.interact.01 <- 
   daily_mbm_grid %>% 
-  filter(Species_code == 'GL') %>% 
-  mgcv::gam(Count ~  s(bathy, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(bathy, by = salt, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
+  filter(Species_code == 'CoMu') %>% 
+  mgcv::gam(Count ~  s(dist, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(dist, by = salt, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
             data = .,
             offset = log(Effort_sqkm),
             family = 'nb')
@@ -248,8 +248,8 @@ summary(CoMu.interact.01) # interaction significant
 
 CoMu.interact.02 <- 
   daily_mbm_grid %>% 
-  filter(Species_code == 'GL') %>% 
-  mgcv::gam(Count ~  s(bathy, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(bathy, by = dth, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
+  filter(Species_code == 'CoMu') %>% 
+  mgcv::gam(Count ~  s(dist, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(dist, by = dth, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
             data = .,
             offset = log(Effort_sqkm),
             family = 'nb')
@@ -258,8 +258,8 @@ summary(CoMu.interact.02) # interaction not significant
 
 CoMu.interact.03 <- 
   daily_mbm_grid %>% 
-  filter(Species_code == 'GL') %>% 
-  mgcv::gam(Count ~  s(bathy, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(salt, by = dth, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
+  filter(Species_code == 'CoMu') %>% 
+  mgcv::gam(Count ~  s(dist, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(salt, by = dth, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
             data = .,
             offset = log(Effort_sqkm),
             family = 'nb')
@@ -274,7 +274,7 @@ AICw
 
 rm(CoMu.interact.01, CoMu.interact.02, CoMu.interact.03)
 
-# the results suggest that interaction 3 is best but still not significant
+# the results suggest that interaction 3 is significant but AIC weight prefers initial model
 
 # Tweedie Distribution ----------------------------------------------------
 
@@ -691,7 +691,7 @@ for (y in unique(daily_mbm_grid$zone)) {
     
     # store the success metrics
     data <- tibble(
-      year = y,
+      zone = y,
       species = x,
       Dev.Expl = summary(model)$dev.expl,
       AUC = test.auc,
@@ -715,7 +715,7 @@ for (y in unique(daily_mbm_grid$zone)) {
   rm(data, train, test, cv_models, performance.full, test.full, test.ranks, test.predicted, y, x, O, R)
 }
 
-# table 5
+# CV Results ----
 # LYO
 LYO_metrics %>% 
   group_by(species) %>% 
@@ -728,6 +728,17 @@ LYO_metrics %>%
     # spacer
     Avg.TSS = mean(TSS),
     sd.TSS. = sd(TSS))
+# Obs:Pred
+LYO_raw %>%
+  group_by(Species_code) %>%
+  summarize(Avg.ObsPred = mean(`Obs:Pred`),
+              sd.ObsPred = sd(`Obs:Pred`))
+# Spearman
+LYO_metrics %>%
+  group_by(species) %>%
+  filter(spearman.rho == median(spearman.rho, na.rm = T)) %>% 
+  dplyr::select(year, species, spearman.rho, spearman.p)
+
 # LZO
 LZO_metrics %>% 
   group_by(species) %>% 
@@ -740,3 +751,15 @@ LZO_metrics %>%
     # spacer
     Avg.TSS = mean(TSS),
     sd.TSS. = sd(TSS))
+
+# Obs:Pred
+LZO_raw %>%
+  group_by(Species_code) %>%
+  summarize(Avg.ObsPred = mean(`Obs:Pred`),
+            sd.ObsPred = sd(`Obs:Pred`))
+# Spearman
+LZO_metrics %>% # pull(species) %>% unique()
+  group_by(species) %>%
+  mutate(rank = rank(spearman.rho)) %>% #View()
+  filter(rank == 3) %>% 
+  dplyr::select(zone, species, spearman.rho, spearman.p)

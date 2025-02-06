@@ -18,11 +18,13 @@ phyto <-
   dplyr::select(Date, zone, phyto, sst, temp_sd, salt, dth) %>%
   # pivot_longer(cols = phyto:dth, names_to = 'variable', values_to = 'Value') %>% 
   ggplot(aes(x = 1, y = phyto)) +
-  geom_jitter(alpha = 0.25) +
+  # geom_jitter(alpha = 0.25) +
   geom_boxplot(fill = 'grey', alpha = 0.5) +
   scale_x_continuous(breaks = NULL) +
+  scale_x_continuous(breaks = NULL) +
   labs(x = '', y = 'Chlorophyll Concentration (µmol/L)') +
-  theme_classic()
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 12), axis.title.y = element_text(size = 15))
 
 # sst
 sst <- 
@@ -32,11 +34,12 @@ sst <-
   dplyr::select(Date, zone, phyto, sst, temp_sd, salt, dth) %>%
   # pivot_longer(cols = phyto:dth, names_to = 'variable', values_to = 'Value') %>% 
   ggplot(aes(x = 1, y = sst)) +
-  geom_jitter(alpha = 0.25) +
+  # geom_jitter(alpha = 0.25) +
   geom_boxplot(fill = 'grey', alpha = 0.5) +
   scale_x_continuous(breaks = NULL) +
   labs(x = '', y = 'Sea-Surface Temperature (ºC)') +
-  theme_classic()
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 12), axis.title.y = element_text(size = 15))
 
 # sdSST
 sdSST <- 
@@ -46,11 +49,12 @@ sdSST <-
   dplyr::select(Date, zone, phyto, sst, temp_sd, salt, dth) %>%
   # pivot_longer(cols = phyto:dth, names_to = 'variable', values_to = 'Value') %>% 
   ggplot(aes(x = 1, y = temp_sd)) +
-  geom_jitter(alpha = 0.25) +
+  # geom_jitter(alpha = 0.25) +
   geom_boxplot(fill = 'grey', alpha = 0.5) +
   scale_x_continuous(breaks = NULL) +
   labs(x = '', y = 'St. Deviation of SST (ºC)') +
-  theme_classic()
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 12), axis.title.y = element_text(size = 15))
   
 # salt
 salt <- 
@@ -60,11 +64,12 @@ salt <-
   dplyr::select(Date, zone, phyto, sst, temp_sd, salt, dth) %>%
   # pivot_longer(cols = phyto:dth, names_to = 'variable', values_to = 'Value') %>% 
   ggplot(aes(x = 1, y = salt)) +
-  geom_jitter(alpha = 0.25) +
+  # geom_jitter(alpha = 0.25) +
   geom_boxplot(fill = 'grey', alpha = 0.5) +
   scale_x_continuous(breaks = NULL) +
   labs(x = '', y = 'Sea Surface Salinity (PSU)') +
-  theme_classic()
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 12), axis.title.y = element_text(size = 15))
 
 # dth
 dth <- 
@@ -74,11 +79,12 @@ dth <-
   dplyr::select(Date, zone, phyto, sst, temp_sd, salt, dth) %>%
   # pivot_longer(cols = phyto:dth, names_to = 'variable', values_to = 'Value') %>% 
   ggplot(aes(x = 1, y = dth)) +
-  geom_jitter(alpha = 0.25) +
+  # geom_jitter(alpha = 0.25) +
   geom_boxplot(fill = 'grey', alpha = 0.5) +
   scale_x_continuous(breaks = NULL) +
   labs(x = '', y = '∆ Tide Height (m)') +
-  theme_classic()
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 12), axis.title.y = element_text(size = 15))
 
 ## save fig 1b ----
 
@@ -103,8 +109,8 @@ for (x in names(env_comp_plots)) {
   ggsave(fname,
          env_comp_plots[[x]],
          device = 'tiff',
-         width = 4.48,
-         height = 3.36,
+         width = 3,
+         height = 4,
          dpi = 500,
          units = 'in')
   print(paste('Done with', x))}

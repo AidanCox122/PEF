@@ -27,7 +27,7 @@ GL_daily_beta <-
 CoMu_daily_beta <- 
   daily_mbm_grid %>% 
   filter(Species_code == 'GL') %>% 
-  mgcv::gam(Count ~  s(bathy, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(year, bs="re"),
+  mgcv::gam(Count ~  s(dist, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(year, bs="re"),
             data = .,
             offset = log(Effort_sqkm),
             family = 'nb')
@@ -142,48 +142,48 @@ GLfine_dth_plot <-
 ## Common Murre ------------------------------------------------------------
 
 ### fine-scale models -----------------------------------------------------
-# bathy, salt, dth
+# dist, salt, dth
 
-# bathy
-CMFine_bathy <- 
+# dist
+CMFine_dist <- 
   data.frame(
-    bathy = seq(-1.7,1.4, 0.05) %>% 
+    dist = seq(-0.90,2.17, 0.05) %>% 
       # number of years
       rep(times = 5),
     salt = mean(daily_mbm_grid$tcur) %>%
-      rep(times = 315),
+      rep(times = 310),
     dth = mean(daily_mbm_grid$dth) %>%
-      rep(times = 315), 
-    year = rep(2017:2021, each = 63)) %>% 
+      rep(times = 310), 
+    year = rep(2017:2021, each = 62)) %>% 
   mutate(year = factor(year, levels = c(2017, 2018, 2019, 2020, 2021), ordered =T))
 
-CMFine2_bathy <- 
-  cbind(CMFine_bathy,
-        predict(CoMu_daily_beta, newdata = CMFine_bathy, type = "response", se = TRUE))
+CMFine2_dist <- 
+  cbind(CMFine_dist,
+        predict(CoMu_daily_beta, newdata = CMFine_dist, type = "response", se = TRUE))
 
-CMFine2_bathy <- within(CMFine2_bathy, {
+CMFine2_dist <- within(CMFine2_dist, {
   LL <- fit - (1.96 * se.fit)
   UL <- fit + (1.96 * se.fit)})
 
-CMfine_bathy_plot <- 
-  CMFine2_bathy %>%
-  unscale('bathy', ., resolution = 'fine') %>%
+CMfine_dist_plot <- 
+  CMFine2_dist %>%
+  unscale('dist', ., resolution = 'fine') %>%
   rename(`Year` = year) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = bathy * -1, y = fit, ymin = LL, ymax = UL, fill = Year), alpha = 0.1) + 
-  geom_line(aes(x = bathy * -1, y = fit, color = `Year`)) +
+  geom_ribbon(aes(x = dist / 1000, y = fit, ymin = LL, ymax = UL, fill = Year), alpha = 0.1) + 
+  geom_line(aes(x = dist / 1000, y = fit, color = `Year`)) +
   scale_color_viridis(discrete = T) +
   scale_fill_viridis(discrete = T) +
   # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('bathy', ., resolution = 'fine')), aes(x = bathy * -1, y = Density), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
-  labs(x = " Depth (m)") +
+  labs(x = " Distance from Shore (km)") +
   ylab("Common Murre Density (indiv./km2)") +
   theme_classic() # murres most common at shallower depths
 
 # salt
 CMFine_salt <- 
   data.frame(
-    bathy = mean(daily_mbm_grid$bathy) %>%
+    dist = mean(daily_mbm_grid$dist) %>%
       rep(times = 300),
     salt = seq(-4.6,1.3, 0.1) %>% 
       # number of years
@@ -220,7 +220,7 @@ CMfine_salt_plot <-
 # dth
 CMFine_dth <- 
   data.frame(
-    bathy = mean(daily_mbm_grid$bathy) %>%
+    dist = mean(daily_mbm_grid$dist) %>%
       rep(times = 395),
     salt = mean(daily_mbm_grid$tcur) %>%
       rep(times = 395),
@@ -381,6 +381,52 @@ HSfine_sst_plot <-
   guides(color = 'none', fill = 'none') +
   theme_classic() # gulls are more common at higher current speeds
 
+# bathy (was highly significant but removed for concurvity)
+
+HSeal_bathy_test <-
+  daily_mbm_grid %>% 
+  filter(Species_code == 'HSeal') %>% 
+  mgcv::gam(PresAbs ~ s(bathy, bs = 'bs', m=c(3,1), k=5),
+            data = .,
+            family = 'binomial')
+
+HSFine_bathy <- 
+  data.frame(
+    bathy = seq(-1.6,1.4, 0.025))
+
+HSFine2_bathy <- 
+  cbind(HSFine_bathy,
+        predict(HSeal_bathy_test, newdata = HSFine_bathy, type = "response", se = TRUE))
+
+HSFine2_bathy <- within(HSFine2_bathy, {
+  LL <- fit - (1.96 * se.fit)
+  UL <- fit + (1.96 * se.fit)}) %>% 
+  mutate(UL = if_else(UL >= 1, 
+                      1, 
+                      UL), 
+         LL = if_else(LL <= 0, 
+                      0, 
+                      LL))
+
+HSfine_bathy_plot <- 
+  HSFine2_bathy %>%
+  unscale('bathy', ., resolution = 'fine') %>%
+  ggplot() + 
+  # plot effect for a low abundance cruise
+  geom_ribbon(aes(x = bathy * -1, y = fit , ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = bathy * -1, y = fit)) +
+  # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('dist', ., resolution = 'fine') %>%
+  #                      mutate(dist = round(dist,0)) %>%
+  #                      group_by(dist, zone) %>%
+  #                      summarize(dist = mean(dist),
+  #                                prob = mean(PresAbs))), aes(x = dist, y = prob), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  scale_y_continuous(limits = c(0, 1)) +
+  xlab("Water Depth (m))") +
+  ylab("Predicted Probability of Harbor Seal Encounter (% Chance)") +
+  guides(color = 'none', fill = 'none') +
+  theme_classic() # gulls are more common at higher current speeds
+
+
 # Harbor Porpoise ---------------------------------------------------------
 
 # distance form shore
@@ -441,7 +487,7 @@ HPfine_dist_plot <-
 
 zone_comp_plots <-
   list(
-    CMfine_bathy_plot,
+    CMfine_dist_plot,
     CMfine_salt_plot,
     CMfine_dth_plot,
     GLfine_tcur_plot,
@@ -451,7 +497,7 @@ zone_comp_plots <-
     HPfine_dist_plot) %>% 
   set_names(
     c(
-      'CM_bathy',
+      'CM_dist',
       'CM_salt',
       'CM_dth',
       'GL_tcur',
