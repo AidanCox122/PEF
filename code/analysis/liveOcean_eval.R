@@ -72,6 +72,17 @@ temp_test <-
 
 print(temp_test)
 
+# calculate range of annual differences
+LivOce_eval %>% 
+  mutate(DiffTemp = ModTemp-ObsTemp,
+         DiffSalt = ModSalt - ObsSalt,
+         Year = lubridate::year(Date)) %>% 
+  group_by(Year) %>%
+  summarize(mean.DiffTemp = mean(DiffTemp),
+            sd.DiffTemp = sd(DiffTemp),
+            mean.DiffSalt = mean(DiffSalt),
+            sd.DiffSalt = sd(DiffSalt), .groups = 'drop')
+
 # SALINITY #
 salt_test <- 
   t.test(

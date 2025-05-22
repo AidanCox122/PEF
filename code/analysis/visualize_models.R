@@ -494,6 +494,7 @@ zone_comp_plots <-
     GLfine_dth_plot,
     HSfine_dist_plot,
     HSfine_sst_plot,
+    HSfine_bathy_plot,
     HPfine_dist_plot) %>% 
   set_names(
     c(
@@ -504,6 +505,7 @@ zone_comp_plots <-
       'GL_dth',
       'HS_dist',
       'HS_sst',
+      'HS_bathy',
       'HP_dist'))
 
 for (x in names(zone_comp_plots)) {

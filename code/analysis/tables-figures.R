@@ -108,8 +108,8 @@ for (x in names(env_comp_plots)) {
     paste0('products/figure1/raw/', Sys.Date(), '_', (x), '.tiff')
   ggsave(fname,
          env_comp_plots[[x]],
-         device = 'tiff',
-         width = 3,
+         device = 'png',
+         width = 1.5,
          height = 4,
          dpi = 500,
          units = 'in')

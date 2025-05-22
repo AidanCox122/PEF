@@ -276,6 +276,13 @@ rm(CoMu.interact.01, CoMu.interact.02, CoMu.interact.03)
 
 # the results suggest that interaction 3 is significant but AIC weight prefers initial model
 
+CoMu.null <- daily_mbm_grid %>% 
+  filter(Species_code == 'CoMu') %>% 
+  mgcv::gam(Count ~  s(year, bs="re"),
+            data = .,
+            offset = log(Effort_sqkm),
+            family = 'nb')
+
 # Tweedie Distribution ----------------------------------------------------
 
 # select model terms
@@ -322,22 +329,22 @@ for (y in unique(daily_mbm_grid$year)) {
   
   cv_models <- 
     list(
-    HPorp = gam(formula = formula.gam(HPorp_daily_beta),
-                family = 'binomial',
-                offset = log(Effort_sqkm),
-                data = train %>% filter(Species_code == 'HPorp')),
-    HSeal = gam(formula = formula.gam(HSeal_daily_beta),
-                family = 'binomial',
-                offset = log(Effort_sqkm),
-                data = train %>% filter(Species_code == 'HSeal')),
-    CoMu = gam(formula = formula.gam(CoMu_daily_beta),
+      HPorp = gam(formula = formula.gam(HPorp_daily_beta),
+                  family = 'binomial',
+                  offset = log(Effort_sqkm),
+                  data = train %>% filter(Species_code == 'HPorp')),
+      HSeal = gam(formula = formula.gam(HSeal_daily_beta),
+                  family = 'binomial',
+                  offset = log(Effort_sqkm),
+                  data = train %>% filter(Species_code == 'HSeal')),
+      CoMu = gam(formula = formula.gam(CoMu_daily_beta),
+                 family = 'nb',
+                 offset = log(Effort_sqkm),
+                 data = train %>% filter(Species_code == 'CoMu')),
+      GL = gam(formula = formula.gam(GL_daily_beta),
                family = 'nb',
                offset = log(Effort_sqkm),
-               data = train %>% filter(Species_code == 'CoMu')),
-   GL = gam(formula = formula.gam(GL_daily_beta),
-            family = 'nb',
-            offset = log(Effort_sqkm),
-            data = train %>% filter(Species_code == 'GL')))
+               data = train %>% filter(Species_code == 'GL')))
   
   ## apply these models to test data
   
@@ -346,6 +353,9 @@ for (y in unique(daily_mbm_grid$year)) {
   
   for(x in unique(daily_mbm_grid$Species_code)) {
     # filter out data for testing
+    train.species <- 
+      train %>% filter(Species_code == x)
+    
     test.species <- 
       test %>% filter(Species_code == x) 
     
@@ -354,6 +364,53 @@ for (y in unique(daily_mbm_grid$year)) {
       cv_models[[x]]
     
     # make predictions
+    train.predicted <- 
+      train.species %>% 
+      cbind(
+        mgcv::predict.gam(model, newdata = train.species, exclude = "s(year)", type = 'response', se = T)) %>% 
+      mutate(
+        Pred.Response = fit %>% round(digits = 2),
+        # convert 0 predicted response to 0.01 so that Obs:Pred can be calculated
+        Pred.Response = if_else(Pred.Response == 0,
+                                0.01,
+                                Pred.Response),
+        Obs.Response = if_else(
+          Species_code %in% c("HSeal", "HPorp"),
+          PresAbs,
+          Density),
+        # categorize seabird abundance into high(1) or low(0) based on time-series median. density 
+        Obs.Cat = case_when(
+          # assign high low abundance to glaucous gull
+          Species_code == 'GL' &
+            Obs.Response >= (daily_mbm_grid %>%
+                               # this bit pulls out the time-series mean
+                               filter(Species_code == 'GL') %>%
+                               pull(Density) %>%
+                               median()) ~ 1,
+          Species_code == 'GL' &
+            Obs.Response < (daily_mbm_grid %>%
+                              filter(Species_code == 'GL') %>%
+                              pull(Density) %>%
+                              median()) ~ 0,
+          # do the same thing for common murre
+          Species_code == 'CoMu' &
+            Obs.Response >= (daily_mbm_grid %>%
+                               filter(Species_code == 'CoMu') %>%
+                               pull(Density) %>%
+                               median()) ~ 1,
+          Species_code == 'CoMu' &
+            Obs.Response < (daily_mbm_grid %>%
+                              filter(Species_code == 'CoMu') %>%
+                              pull(Density) %>%
+                              median()) ~ 0,
+          Species_code %in% c("HSeal", "HPorp") ~ NA),
+        PresAbs,
+        Response.Type = if_else(
+          Species_code %in% c("HSeal", "HPorp"),
+          'PresAbs',
+          'Density')) %>% 
+      dplyr::select(-c(Count, Density, PresAbs, fit))
+    
     test.predicted <- 
       test.species %>% 
       cbind(
@@ -368,7 +425,7 @@ for (y in unique(daily_mbm_grid$year)) {
           Species_code %in% c("HSeal", "HPorp"),
           PresAbs,
           Density),
-        # categorize seabird abundance into high(1) or low(0) based on time-series avg. density 
+        # categorize seabird abundance into high(1) or low(0) based on time-series median. density 
         Obs.Cat = case_when(
           # assign high low abundance to glaucous gull
           Species_code == 'GL' &
@@ -451,7 +508,7 @@ for (y in unique(daily_mbm_grid$year)) {
           rank(Pred.Response, ties.method = 'average'),
           rank(Avg.Pred.Response, ties.method = 'average'))) %>% 
       ungroup()
-
+    
     
     if(x %in% c('HSeal', 'HPorp')) {
       O <- test.ranks %>%
@@ -473,29 +530,64 @@ for (y in unique(daily_mbm_grid$year)) {
     
     test.full <- rbind(test.full, test.predicted)
     
-    # calculate the ROC and TSS
+    # calculate the AUC and Training Threshold for TSS
     if(x %in% c('GL', 'CoMu')) {
+      train.roc <- 
+        roc(train.predicted$Obs.Cat, train.predicted$Pred.Response)
       test.roc <- 
-        roc(test.predicted$Obs.Cat, test.predicted$Pred.Response)
+        roc(test.predicted$Obs.Response, test.predicted$Pred.Response)
       test.auc <- auc(test.predicted$Obs.Cat, test.predicted$Pred.Response)
-      } else{
-        test.roc <- 
-          roc(test.predicted$Obs.Response, test.predicted$Pred.Response)
-        test.auc <- auc(test.predicted$Obs.Response, test.predicted$Pred.Response)}
+    } else{
+      train.roc <- 
+        roc(train.predicted$Obs.Response, train.predicted$Pred.Response)
+      test.roc <- 
+        roc(test.predicted$Obs.Response, test.predicted$Pred.Response)
+      test.auc <- auc(test.predicted$Obs.Response, test.predicted$Pred.Response)}
     
-    # plot(test.roc)
-    
-    roc_data <- 
+    # plot(train.roc)
+    roc.data <- 
       data.frame(sensitivity = test.roc$sensitivities, specificity = test.roc$specificities, thresholds = test.roc$thresholds) %>% 
       mutate(TSS = (sensitivity + specificity) - 1)
     
+    train_threshold <- 
+      data.frame(sensitivity = train.roc$sensitivities, specificity = train.roc$specificities, thresholds = train.roc$thresholds) %>% 
+      mutate(TSS = (sensitivity + specificity) - 1) %>% 
+      filter(TSS == max(TSS)) %>% 
+      pull(thresholds)
+    
+    # Calculate TSS
+    test.predicted <- 
+      test.predicted %>% 
+      mutate(
+        Pred.Cat = if_else(Pred.Response >= train_threshold,
+                           1,
+                           0))
+    if(x %in% c('GL', 'CoMu')) {
+      conf_matrix <- table(Predicted = test.predicted$Pred.Cat, Observed = test.predicted$Obs.Cat)
+    } else{
+      conf_matrix <- table(Predicted = test.predicted$Pred.Cat, Observed = test.predicted$Obs.Response)
+    }
+    
+    
+    # Extract values
+    TP <- conf_matrix["1", "1"]
+    TN <- conf_matrix["0", "0"]
+    FP <- conf_matrix["1", "0"]
+    FN <- conf_matrix["0", "1"]
+    
+    # Calculate sensitivity and specificity
+    sensitivity <- TP / (TP + FN)
+    specificity <- TN / (TN + FP)
+    
+    # Calculate TSS
+    TSS <- sensitivity + specificity - 1
     # store the success metrics
     data <- tibble(
       year = y,
       species = x,
       Dev.Expl = summary(model)$dev.expl,
       AUC = test.auc,
-      TSS = max(roc_data$TSS),
+      TSS,
       `Obs:Pred` = mean(test.predicted$`Obs:Pred`),
       `sd.Obs:Pred` = sd(test.predicted$`Obs:Pred`),
       spearman.rho = cor.test(O, R, method = 'spearman')$estimate,
@@ -504,7 +596,7 @@ for (y in unique(daily_mbm_grid$year)) {
     # save to repo
     performance.full <- 
       rbind(performance.full, data)
-  # tell the user you're done with species x
+    # tell the user you're done with species x
     print(
       paste('Done with', x, sep = ' '))
   }
@@ -512,7 +604,7 @@ for (y in unique(daily_mbm_grid$year)) {
   LYO_raw <- rbind(LYO_raw, test.full[,-c(3:13)])
   LYO_metrics <- rbind(LYO_metrics, performance.full)
   print(y)
-  rm(data, train, test, cv_models, performance.full, test.full, test.ranks, test.predicted, y, x, O, R)
+  rm(data, train, test, cv_models, performance.full, test.full, test.ranks, test.predicted, y, x, O, R, TSS, TP, FP, TN, FN, sensitivity, specificity, conf_matrix, roc.data, test.roc, train.roc)
 }
 
 
@@ -554,6 +646,9 @@ for (y in unique(daily_mbm_grid$zone)) {
   
   for(x in unique(daily_mbm_grid$Species_code)) {
     # filter out data for testing
+    train.species <- 
+      train %>% filter(Species_code == x)
+    
     test.species <- 
       test %>% filter(Species_code == x) 
     
@@ -562,6 +657,53 @@ for (y in unique(daily_mbm_grid$zone)) {
       cv_models[[x]]
     
     # make predictions
+    train.predicted <- 
+      train.species %>% 
+      cbind(
+        mgcv::predict.gam(model, newdata = train.species, type = 'response', se = T)) %>% 
+      mutate(
+        Pred.Response = fit %>% round(digits = 2),
+        # convert 0 predicted response to 0.01 so that Obs:Pred can be calculated
+        Pred.Response = if_else(Pred.Response == 0,
+                                0.01,
+                                Pred.Response),
+        Obs.Response = if_else(
+          Species_code %in% c("HSeal", "HPorp"),
+          PresAbs,
+          Density),
+        # categorize seabird abundance into high(1) or low(0) based on time-series avg. density 
+        Obs.Cat = case_when(
+          # assign high low abundance to glaucous gull
+          Species_code == 'GL' &
+            Obs.Response >= (daily_mbm_grid %>%
+                               # this bit pulls out the time-series mean
+                               filter(Species_code == 'GL') %>%
+                               pull(Density) %>%
+                               median()) ~ 1,
+          Species_code == 'GL' &
+            Obs.Response < (daily_mbm_grid %>%
+                              filter(Species_code == 'GL') %>%
+                              pull(Density) %>%
+                              median()) ~ 0,
+          # do the same thing for common murre
+          Species_code == 'CoMu' &
+            Obs.Response >= (daily_mbm_grid %>%
+                               filter(Species_code == 'CoMu') %>%
+                               pull(Density) %>%
+                               median()) ~ 1,
+          Species_code == 'CoMu' &
+            Obs.Response < (daily_mbm_grid %>%
+                              filter(Species_code == 'CoMu') %>%
+                              pull(Density) %>%
+                              median()) ~ 0,
+          Species_code %in% c("HSeal", "HPorp") ~ NA),
+        PresAbs,
+        Response.Type = if_else(
+          Species_code %in% c("HSeal", "HPorp"),
+          'PresAbs',
+          'Density')) %>% 
+      dplyr::select(-c(Count, Density, PresAbs, fit))
+    
     test.predicted <- 
       test.species %>% 
       cbind(
@@ -674,20 +816,62 @@ for (y in unique(daily_mbm_grid$zone)) {
     test.full <- rbind(test.full, test.predicted)
     
     # calculate the ROC and TSS
+    # calculate the AUC and Training Threshold for TSS
     if(x %in% c('GL', 'CoMu')) {
+      train.roc <- 
+        roc(train.predicted$Obs.Cat, train.predicted$Pred.Response)
       test.roc <- 
-        roc(test.predicted$Obs.Cat, test.predicted$Pred.Response)
+        roc(test.predicted$Obs.Response, test.predicted$Pred.Response)
       test.auc <- auc(test.predicted$Obs.Cat, test.predicted$Pred.Response)
     } else{
+      train.roc <- 
+        roc(train.predicted$Obs.Response, train.predicted$Pred.Response)
       test.roc <- 
         roc(test.predicted$Obs.Response, test.predicted$Pred.Response)
       test.auc <- auc(test.predicted$Obs.Response, test.predicted$Pred.Response)}
     
-    # plot(test.roc)
-    
-    roc_data <- 
+    # plot(train.roc)
+    roc.data <- 
       data.frame(sensitivity = test.roc$sensitivities, specificity = test.roc$specificities, thresholds = test.roc$thresholds) %>% 
       mutate(TSS = (sensitivity + specificity) - 1)
+    
+    train_threshold <- 
+      data.frame(sensitivity = train.roc$sensitivities, specificity = train.roc$specificities, thresholds = train.roc$thresholds) %>% 
+      mutate(TSS = (sensitivity + specificity) - 1) %>% 
+      filter(TSS == max(TSS)) %>% 
+      pull(thresholds)
+    
+    # Calculate TSS
+    test.predicted <- 
+      test.predicted %>% 
+      mutate(
+        Pred.Cat = if_else(Pred.Response >= train_threshold,
+                           1,
+                           0))
+    if(x %in% c('GL', 'CoMu')) {
+      conf_matrix <- table(Predicted = test.predicted$Pred.Cat, Observed = test.predicted$Obs.Cat)
+    } else{
+      conf_matrix <- table(Predicted = test.predicted$Pred.Cat, Observed = test.predicted$Obs.Response)
+    }
+    
+    
+    # Extract values
+    TP <- try({conf_matrix["1", "1"]}, silent = T)
+    if(is.character(TP)==T){TP <- 0}
+    TN <- try({conf_matrix["0", "0"]}, silent = T)
+    if(is.character(TN)==T){TN <- 0}
+    FP <- try({conf_matrix["1", "0"]}, silent = T)
+    if(is.character(FP)==T){FP <- 0}
+    FN <- try({conf_matrix["0", "1"]}, silent = T)
+    if(is.character(FN)==T){FN <- 0}
+    
+    
+    # Calculate sensitivity and specificity
+    sensitivity <- TP / (TP + FN)
+    specificity <- TN / (TN + FP)
+    
+    # Calculate TSS
+    TSS <- sensitivity + specificity - 1
     
     # store the success metrics
     data <- tibble(
@@ -695,7 +879,7 @@ for (y in unique(daily_mbm_grid$zone)) {
       species = x,
       Dev.Expl = summary(model)$dev.expl,
       AUC = test.auc,
-      TSS = max(roc_data$TSS),
+      TSS = TSS,
       `Obs:Pred` = mean(test.predicted$`Obs:Pred`),
       `sd.Obs:Pred` = sd(test.predicted$`Obs:Pred`),
       spearman.rho = cor.test(O, R, method = 'spearman')$estimate,
@@ -718,45 +902,50 @@ for (y in unique(daily_mbm_grid$zone)) {
 # CV Results ----
 # LYO
 LYO_metrics %>% 
+  mutate(species = factor(species, levels = c('CoMu', 'GL', 'HSeal', 'HPorp'))) %>% 
   group_by(species) %>% 
   summarise(
-    Avg.Dev.Expl = mean(Dev.Expl),
-    SD.Dev.Expl = sd(Dev.Expl),
+    Avg.Dev.Expl = mean(Dev.Expl) %>% round(2),
+    SD.Dev.Expl = sd(Dev.Expl) %>% round(2),
     # spacer
-    Avg.AUC = mean(AUC),
-    sd.AUC = sd(AUC),
+    Avg.AUC = mean(AUC) %>% round(2),
+    sd.AUC = sd(AUC) %>% round(2),
     # spacer
-    Avg.TSS = mean(TSS),
-    sd.TSS. = sd(TSS))
+    Avg.TSS = mean(TSS) %>% round(2),
+    sd.TSS. = sd(TSS) %>% round(2))
 # Obs:Pred
 LYO_raw %>%
+  mutate(Species_code = factor(Species_code, levels = c('CoMu', 'GL', 'HSeal', 'HPorp'))) %>% 
   group_by(Species_code) %>%
-  summarize(Avg.ObsPred = mean(`Obs:Pred`),
-              sd.ObsPred = sd(`Obs:Pred`))
+  summarize(Avg.ObsPred = mean(`Obs:Pred`) %>% round(2),
+              sd.ObsPred = sd(`Obs:Pred`) %>% round(2))
 # Spearman
 LYO_metrics %>%
+  mutate(species = factor(species, levels = c('CoMu', 'GL', 'HSeal', 'HPorp'))) %>% 
   group_by(species) %>%
   filter(spearman.rho == median(spearman.rho, na.rm = T)) %>% 
   dplyr::select(year, species, spearman.rho, spearman.p)
 
 # LZO
 LZO_metrics %>% 
+  mutate(species = factor(species, levels = c('CoMu', 'GL', 'HSeal', 'HPorp'), ordered = T)) %>% 
   group_by(species) %>% 
   summarise(
-    Avg.Dev.Expl = mean(Dev.Expl),
-    SD.Dev.Expl = sd(Dev.Expl),
+    Avg.Dev.Expl = mean(Dev.Expl) %>% round(2),
+    SD.Dev.Expl = sd(Dev.Expl) %>% round(2),
     # spacer
-    Avg.AUC = mean(AUC),
-    sd.AUC = sd(AUC),
+    Avg.AUC = mean(AUC) %>% round(2),
+    sd.AUC = sd(AUC) %>% round(2),
     # spacer
-    Avg.TSS = mean(TSS),
-    sd.TSS. = sd(TSS))
+    Avg.TSS = mean(TSS) %>% round(2),
+    sd.TSS. = sd(TSS) %>% round(2))
 
 # Obs:Pred
 LZO_raw %>%
+  mutate(Species_code = factor(Species_code, levels = c('CoMu', 'GL', 'HSeal', 'HPorp'), ordered = T)) %>% 
   group_by(Species_code) %>%
-  summarize(Avg.ObsPred = mean(`Obs:Pred`),
-            sd.ObsPred = sd(`Obs:Pred`))
+  summarize(Avg.ObsPred = mean(`Obs:Pred`) %>% round(2),
+            sd.ObsPred = sd(`Obs:Pred`) %>% round(2))
 # Spearman
 LZO_metrics %>% # pull(species) %>% unique()
   group_by(species) %>%

@@ -48,7 +48,7 @@ GL_zone_comp <-
   coord_flip() +
   scale_color_discrete(direction = -1) +
   xlab('Transect Zone') +
-  ylab("Density (indv./km2)") +
+  ylab(expression("Density (indiv./km"^2*")")) +
   facet_grid(species~.) +
   theme_classic() + 
   theme(legend.position = "bottom") 
@@ -91,7 +91,7 @@ CM_zone_comp <-
   coord_flip() +
   scale_color_discrete(direction = -1) +
   xlab('Transect Zone') +
-  ylab("Density (indv./km2)") +
+  ylab(expression("Density (indiv./km"^2*")")) +
   facet_grid(species~.) +
   theme_classic() + 
   theme(legend.position = "bottom")
@@ -133,7 +133,7 @@ HS_zone_comp <-
   coord_flip() +
   scale_color_discrete(direction = -1) +
   xlab('Transect Zone') +
-  ylab("Density (indv./km2)") +
+  ylab(expression("Density (indiv./km"^2*")")) +
   facet_grid(species~.) +
   theme_classic() + 
   theme(legend.position = "bottom") 
@@ -172,7 +172,7 @@ HP_zone_comp <-
   coord_flip() +
   scale_color_discrete(direction = -1) +
   xlab('Transect Zone') +
-  ylab("Density (indv./km2)") +
+  ylab(expression("Density (indiv./km"^2*")")) +
   facet_grid(species~.) +
   theme_classic() + 
   theme(legend.position = "bottom")
