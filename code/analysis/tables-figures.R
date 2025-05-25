@@ -116,6 +116,116 @@ for (x in names(env_comp_plots)) {
   print(paste('Done with', x))}
 
 
+# Fig 3 ------------------------------------------------------------------
+
+## Zonal Boxplots of environmental variables
+# SST
+sst.2 <- 
+  daily_mbm_grid %>%
+  filter(Species_code == 'GL') %>% 
+  unscale('sst', ., resolution = 'fine') %>%
+  dplyr::select(Date, zone, phyto, sst, temp_sd, salt, dth) %>%
+  # pivot_longer(cols = phyto:dth, names_to = 'variable', values_to = 'Value') %>% 
+  ggplot(aes(x = 1, y = sst, fill = zone)) +
+  # geom_jitter(alpha = 0.25) +
+  geom_violin(alpha = 0.5, draw_quantiles = c(0.5)) +
+  scale_x_continuous(breaks = NULL) +
+  labs(x = '', y = 'Sea-Surface Temperature (ºC)') +
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 12), axis.title.y = element_text(size = 15))
+
+# TEMP-SD
+temp_sd.2 <- 
+  daily_mbm_grid %>%
+  filter(Species_code == 'GL') %>% 
+  unscale('temp_sd', ., resolution = 'fine') %>%
+  dplyr::select(Date, zone, phyto, sst, temp_sd, salt, dth) %>%
+  # pivot_longer(cols = phyto:dth, names_to = 'variable', values_to = 'Value') %>% 
+  ggplot(aes(x = 1, y = temp_sd, fill = zone)) +
+  # geom_jitter(alpha = 0.25) +
+  geom_violin(alpha = 0.5, draw_quantiles = c(0.5)) +
+  scale_x_continuous(breaks = NULL) +
+  labs(x = '', y = 'Standard Deviation of SST (ºC)') +
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 12), axis.title.y = element_text(size = 15))
+
+# salt
+salt.2 <- 
+  daily_mbm_grid %>%
+  filter(Species_code == 'GL') %>% 
+  unscale('salt', ., resolution = 'fine') %>%
+  dplyr::select(Date, zone, phyto, sst, temp_sd, salt, dth) %>%
+  # pivot_longer(cols = phyto:dth, names_to = 'variable', values_to = 'Value') %>% 
+  ggplot(aes(x = 1, y = salt, fill = zone)) +
+  # geom_jitter(alpha = 0.25) +
+  geom_violin(alpha = 0.5, draw_quantiles = c(0.5)) +
+  scale_x_continuous(breaks = NULL) +
+  labs(x = '', y = 'Sea-Surface Salinity (PSU)') +
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 12), axis.title.y = element_text(size = 15))
+
+# phyto
+phyto.2 <- 
+  daily_mbm_grid %>%
+  filter(Species_code == 'GL') %>% 
+  unscale('phyto', ., resolution = 'fine') %>%
+  dplyr::select(Date, zone, phyto, sst, temp_sd, salt, dth) %>%
+  # pivot_longer(cols = phyto:dth, names_to = 'variable', values_to = 'Value') %>% 
+  ggplot(aes(x = 1, y = phyto, fill = zone)) +
+  # geom_jitter(alpha = 0.25) +
+  geom_violin(alpha = 0.5, draw_quantiles = c(0.5)) +
+  scale_x_continuous(breaks = NULL) +
+  labs(x = '', y = 'Chlorophyll Concentration (µmol/L)') +
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 12), axis.title.y = element_text(size = 15))
+
+# ∆ Tide Height
+dth.2 <- 
+  daily_mbm_grid %>%
+  filter(Species_code == 'GL') %>% 
+  unscale('dth', ., resolution = 'fine') %>%
+  dplyr::select(Date, zone, phyto, sst, temp_sd, salt, dth) %>%
+  # pivot_longer(cols = phyto:dth, names_to = 'variable', values_to = 'Value') %>% 
+  ggplot(aes(x = 1, y = dth)) +
+  # geom_jitter(alpha = 0.25) +
+  geom_violin(alpha = 0.5, fill = 'grey', draw_quantiles = c(0.5)) +
+  # geom_boxplot(alpha = 0.5) +
+  scale_x_continuous(breaks = NULL) +
+  labs(x = '', y = '∆ Tide Height (m)') +
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 12), axis.title.y = element_text(size = 15))
+
+
+## save fig.3 -------------------------------------------------------------
+
+env_zone_plots <-
+  list(
+    phyto.2,
+    sst.2,
+    temp_sd.2,
+    salt.2,
+    dth.2) %>% 
+  set_names(
+    c(
+      'phyto',
+      'sst',
+      'sdSST',
+      'salt',
+      'dth'))
+
+for (x in names(env_zone_plots)) {
+  fname <-
+    paste0('products/figure3/raw/', Sys.Date(), '_', (x), '.tiff')
+  ggsave(fname,
+         env_zone_plots[[x]],
+         device = 'png',
+         width = 4,
+         height = 4,
+         dpi = 500,
+         units = 'in')
+  print(paste('Done with', x))}
+
+
 # Table 2 -----------------------------------------------------------------
 
 daily_mbm_grid %>% 

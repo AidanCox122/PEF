@@ -77,7 +77,7 @@ LivOce_eval %>%
   mutate(DiffTemp = ModTemp-ObsTemp,
          DiffSalt = ModSalt - ObsSalt,
          Year = lubridate::year(Date)) %>% 
-  group_by(Year) %>%
+  # group_by(Year) %>%
   summarize(mean.DiffTemp = mean(DiffTemp),
             sd.DiffTemp = sd(DiffTemp),
             mean.DiffSalt = mean(DiffSalt),

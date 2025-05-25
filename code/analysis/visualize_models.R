@@ -67,32 +67,39 @@ GLFine_tcur <-
     dth = mean(daily_mbm_grid$dth) %>% rep(times = 3045), 
     year = rep(2017:2021, each = 87) %>% 
       rep(times = 7),
-    cruise.gen = rep(1:7, each = 435)) %>% 
+    cruise.gen = rep(1:7, each = 435),
+    Effort_Sqkm = rep(1, times = 3045)) %>% 
   mutate(year = factor(year, levels = c(2017, 2018, 2019, 2020, 2021)),
          cruise.gen = factor(cruise.gen, levels = c(1,2,3,4,5,6,7), ordered = T))
 
 GLFine2_tcur <- 
   cbind(GLFine_tcur,
-        predict(GL_daily_beta, newdata = GLFine_tcur, type = "response", se = TRUE))
+        predict(GL_daily_beta, newdata = GLFine_tcur, type = "link", se = TRUE, exclude = 's(year)'))
 
-GLFine2_tcur <- within(GLFine2_tcur, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)})
+GLFine2_tcur <- 
+  GLFine2_tcur %>% 
+  dplyr::select(-c(year)) %>% 
+  distinct() %>% 
+  mutate(
+    mod.fit = fit,
+    mod.fit.offset = mod.fit + log(Effort_Sqkm),
+    fit = exp(mod.fit.offset),
+    LL = exp(mod.fit.offset - (1.96 * se.fit)),
+    UL = exp(mod.fit.offset + (1.96 * se.fit)))
 
 GLfine_tcur_plot <- 
   GLFine2_tcur %>%
   unscale('tcur', ., resolution = 'fine') %>%
-  mutate(`Year` = factor(year),
-         `Cruise #` = factor(cruise.gen, levels = c(1,2,3,4,5,6,7), ordered = T)) %>% 
+  mutate(`Cruise #` = factor(cruise.gen, levels = c(1,2,3,4,5,6,7), ordered = T)) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = tcur, y = fit, ymin = LL, ymax = UL, fill = `Year`), alpha = 0.1) + 
-  geom_line(aes(x = tcur, y = fit, color = `Year`)) +
-  scale_color_viridis(discrete = T) +
-  scale_fill_viridis(discrete = T) +
-  # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('tcur', ., resolution = 'fine')), aes(x = tcur, y = Density), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('tcur', ., resolution = 'fine')), aes(x = tcur, y = Density), shape = 21, color = 'black', fill = 'black', alpha = 0.25) +
+  geom_ribbon(aes(x = tcur, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = tcur, y = fit)) +
+  # scale_color_viridis(discrete = T) +
+  # scale_fill_viridis(discrete = T) +
   xlab("Tidal Current Amplitude (m/s)") +
-  ylab("Glaucous-Winged Gull Density (indiv./km2)") +
+  ylab(expression("Glaucous-winged Gull Density (indiv./km"^2*")")) +
   theme_classic() # gulls are more common at higher current speeds
 
 # dth
@@ -105,6 +112,7 @@ GLFine_dth <-
       rep(times = 5) %>% 
       # number of cruises
       rep(times = 7), 
+    Effort_Sqkm = rep(1, times = 2765),
     year = rep(2017:2021, each = 79) %>% 
       rep(times = 7),
     cruise.gen = rep(1:7, each = 395)) %>% 
@@ -113,30 +121,31 @@ GLFine_dth <-
 
 GLFine2_dth <- 
   cbind(GLFine_dth,
-        predict(GL_daily_beta, newdata = GLFine_dth, type = "response", se = TRUE))
+        predict(GL_daily_beta, newdata = GLFine_dth, type = "link", se = TRUE, exclude = 's(year)'))
 
-GLFine2_dth <- within(GLFine2_dth, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)}) %>% 
+GLFine2_dth <- GLFine2_dth %>% 
+  dplyr::select(-c(year)) %>% 
+  distinct() %>% 
   mutate(
-    LL = if_else(LL <=0,
-                 0,
-                 LL))
+    mod.fit = fit,
+    mod.fit.offset = mod.fit + log(Effort_Sqkm),
+    fit = exp(mod.fit.offset),
+    LL = exp(mod.fit.offset - (1.96 * se.fit)),
+    UL = exp(mod.fit.offset + (1.96 * se.fit)))
 
-GLfine_dth_plot <- 
+GLfine_dth_plot <-
   GLFine2_dth %>%
   unscale('dth', ., resolution = 'fine') %>%
-  rename(`Year` = year) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = dth, y = fit, ymin = LL, ymax = UL, fill = Year), alpha = 0.1) + 
-  geom_line(aes(x = dth, y = fit, color = `Year`)) +
-  scale_y_continuous(limits = c(0,38)) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('dth', ., resolution = 'fine')), aes(x = dth, y = Density), shape = 21, color = 'black', fill = 'black', alpha = 0.25) +
+  geom_ribbon(aes(x = dth, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = dth, y = fit)) +
+  # scale_y_continuous(limits = c(0,38)) +
   scale_color_viridis(discrete = T) +
   scale_fill_viridis(discrete = T) +
-  # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'GL') %>% unscale('dth', ., resolution = 'fine')), aes(x = dth, y = Density), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   labs(x = "∆ Tide Height (m)") +
-  ylab("Glaucous-Winged Gull Density (indiv./km2)") +
+  ylab(expression("Glaucous-winged Gull Density (indiv./km"^2*")")) +
   theme_classic() # gulls are more common at intermediate tides
 
 ## Common Murre ------------------------------------------------------------
@@ -153,31 +162,39 @@ CMFine_dist <-
     salt = mean(daily_mbm_grid$tcur) %>%
       rep(times = 310),
     dth = mean(daily_mbm_grid$dth) %>%
-      rep(times = 310), 
+      rep(times = 310),
+    Effort_sqkm = rep(1, times = 310),
     year = rep(2017:2021, each = 62)) %>% 
   mutate(year = factor(year, levels = c(2017, 2018, 2019, 2020, 2021), ordered =T))
 
 CMFine2_dist <- 
   cbind(CMFine_dist,
-        predict(CoMu_daily_beta, newdata = CMFine_dist, type = "response", se = TRUE))
+        predict(CoMu_daily_beta, newdata = CMFine_dist, type = "link", se.fit = TRUE, exclude = 's(year)'))
 
-CMFine2_dist <- within(CMFine2_dist, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)})
+CMFine2_dist <- CMFine2_dist %>% 
+  dplyr::select(-c(year)) %>% 
+  distinct() %>% 
+  mutate(
+    mod.fit = fit,
+    mod.fit.offset = mod.fit + log(Effort_sqkm), 
+    fit = exp(mod.fit.offset),
+    LL = exp(mod.fit.offset - (1.96 * se.fit)),
+    UL = exp(mod.fit.offset + (1.96 * se.fit)) 
+  )
+  
 
-CMfine_dist_plot <- 
+CMfine_dist_plot <-
   CMFine2_dist %>%
   unscale('dist', ., resolution = 'fine') %>%
-  rename(`Year` = year) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = dist / 1000, y = fit, ymin = LL, ymax = UL, fill = Year), alpha = 0.1) + 
-  geom_line(aes(x = dist / 1000, y = fit, color = `Year`)) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('dist', ., resolution = 'fine')), aes(x = dist/1000, y = Density), shape = 21, color = 'black', fill = 'black', alpha = 0.25) +
+  geom_ribbon(aes(x = dist / 1000, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = dist / 1000, y = fit)) +
   scale_color_viridis(discrete = T) +
   scale_fill_viridis(discrete = T) +
-  # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('bathy', ., resolution = 'fine')), aes(x = bathy * -1, y = Density), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   labs(x = " Distance from Shore (km)") +
-  ylab("Common Murre Density (indiv./km2)") +
+  ylab(expression("Common Murre Density (indiv./km"^2*")")) +
   theme_classic() # murres most common at shallower depths
 
 # salt
@@ -190,29 +207,36 @@ CMFine_salt <-
       rep(times = 5),
     dth = mean(daily_mbm_grid$dth) %>%
       rep(times = 300), 
+    Effort_Sqkm = rep(1, times = 300),
     year = rep(2017:2021, each = 60)) %>% 
   mutate(year = factor(year, levels = c(2017, 2018, 2019, 2020, 2021), ordered =T))
 
 CMFine2_salt <- 
   cbind(CMFine_salt,
-        predict(CoMu_daily_beta, newdata = CMFine_salt, type = "response", se = TRUE))
+        predict(CoMu_daily_beta, newdata = CMFine_salt, type = "link", se = TRUE, exclude = 's(year)'))
 
-CMFine2_salt <- within(CMFine2_salt, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)})
+CMFine2_salt <- CMFine2_salt %>% 
+  dplyr::select(-c(year)) %>% 
+  distinct() %>% 
+  mutate(
+    mod.fit = fit,
+    mod.fit.offset = mod.fit + log(Effort_Sqkm),
+    fit = exp(mod.fit.offset),
+    LL = exp(mod.fit.offset - (1.96 * se.fit)),
+    UL = exp(mod.fit.offset + (1.96 * se.fit)))
 
 CMfine_salt_plot <- 
   CMFine2_salt %>%
   unscale('salt', ., resolution = 'fine') %>%
-  rename(`Year` = year) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = salt, y = fit, ymin = LL, ymax = UL, fill = Year), alpha = 0.1) + 
-  geom_line(aes(x = salt, y = fit, color = `Year`)) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('salt', ., resolution = 'fine')), aes(x = salt, y = Density), shape = 21, color = 'black', fill = 'black', alpha = 0.25) +
+  geom_ribbon(aes(x = salt, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = salt, y = fit)) +
   scale_color_viridis(discrete = T) +
   scale_fill_viridis(discrete = T) +
-  # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('salt', ., resolution = 'fine')), aes(x = salt, y = Density), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   labs(x = "Sea-Surface Salinity (PSU)") +
+  ylab(expression("Density (indiv./km"^2*")")) +
   ylab("Common Murre Density (indiv./km2)") +
   theme_classic()
 
@@ -227,34 +251,36 @@ CMFine_dth <-
     dth = seq(-2.7,2.0, 0.06) %>% 
       # number of years
       rep(times = 5), 
+    Effort_Sqkm = rep(1, times = 395),
     year = rep(2017:2021, each = 79)) %>% 
   mutate(year = factor(year, levels = c(2017, 2018, 2019, 2020, 2021), ordered =T))
 
 CMFine2_dth <- 
   cbind(CMFine_dth,
-        predict(CoMu_daily_beta, newdata = CMFine_dth, type = "response", se = TRUE))
+        predict(CoMu_daily_beta, newdata = CMFine_dth, type = "link", se = TRUE, exclude = 's(year)'))
 
-CMFine2_dth <- within(CMFine2_dth, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)}) %>% 
+CMFine2_dth <- CMFine2_dth %>% 
+  dplyr::select(-c('year')) %>% 
+  distinct() %>% 
   mutate(
-    LL = if_else(LL <= 0,
-                 0,
-                 LL))
+    mod.fit = fit,
+    mod.fit.offset = mod.fit + log(Effort_Sqkm),
+    fit = exp(mod.fit.offset),
+    LL = exp(mod.fit.offset - (1.96 * se.fit)),
+    UL = exp(mod.fit.offset + (1.96 * se.fit)))
 
-CMfine_dth_plot <- 
+CMfine_dth_plot <-
   CMFine2_dth %>%
   unscale('dth', ., resolution = 'fine') %>%
-  rename(`Year` = year) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = dth, y = fit, ymin = LL, ymax = UL, fill = Year), alpha = 0.1) + 
-  geom_line(aes(x = dth, y = fit, color = `Year`)) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('dth', ., resolution = 'fine')), aes(x = dth, y = Density), shape = 21, color = 'black', fill = 'black', alpha = 0.25) +
+  geom_ribbon(aes(x = dth, y = fit, ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = dth, y = fit)) +
   scale_color_viridis(discrete = T) +
   scale_fill_viridis(discrete = T) +
-  # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'CoMu') %>% unscale('dth', ., resolution = 'fine')), aes(x = dth, y = Density), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   labs(x = "∆ Tide Height (m)") +
-  ylab("Common Murre Density (indiv./km2)") +
+  ylab(expression("Common Murre Density (indiv./km"^2*")")) +
   theme_classic() # murres most common at intermediate tides
 
 # check average dth in study area
@@ -287,38 +313,35 @@ HSFine_dist <-
 
 HSFine2_dist <- 
   cbind(HSFine_dist,
-        predict(HSeal_daily_beta, newdata = HSFine_dist, type = "response", se = TRUE))
+        predict(HSeal_daily_beta, newdata = HSFine_dist, type = "link", se = TRUE, exclude = c('s(year)', 's(cruise.gen)')))
 
-HSFine2_dist <- within(HSFine2_dist, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)}) %>% 
-  mutate(UL = if_else(UL >= 1, 
-                      1, 
-                      UL), 
-         LL = if_else(LL <= 0, 
-                      0, 
-                      LL))
+HSFine2_dist <- HSFine2_dist %>% 
+  dplyr::select(-c(
+    # year,
+    cruise.gen)) %>% 
+  distinct() %>% 
+  mutate(
+    mod.fit = fit,
+    fit = boot::inv.logit(mod.fit),
+    LL = boot::inv.logit(mod.fit - (1.96 * se.fit)),
+    UL = boot::inv.logit(mod.fit + (1.96 * se.fit)))
 
-HSfine_dist_plot <- 
+HSfine_dist_plot <-
   HSFine2_dist %>%
   unscale('dist', ., resolution = 'fine') %>%
-  mutate(`Year` = factor(year),
-         `Survey #` = factor(cruise.gen, levels = c(1,2,3,4,5,6,7), ordered = T)) %>% 
-  filter(Year == 2017 | Year == 2020) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = dist/1000, y = fit , ymin = LL, ymax = UL, group = `Survey #`, fill = `Year`), alpha = 0.1) + 
-  geom_line(aes(x = dist/1000, y = fit, color = `Year`, alpha = `Survey #`)) +
-  # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('dist', ., resolution = 'fine') %>%
-  #                      mutate(dist = round(dist,0)) %>%
-  #                      group_by(dist, zone) %>%
-  #                      summarize(dist = mean(dist),
-  #                                prob = mean(PresAbs))), aes(x = dist/1000, y = prob), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('dist', ., resolution = 'fine') %>%
+                       mutate(dist = round(dist,0)) %>%
+                       group_by(dist, zone, year) %>%
+                       summarize(dist = mean(dist),
+                                 prob = mean(PresAbs))), aes(x = dist/1000, y = prob), shape = 21, color = 'black', fill = 'black', alpha = 0.25) +
+  geom_ribbon(aes(x = dist/1000, y = fit , ymin = LL, ymax = UL), alpha = 0.1) +
+  geom_line(aes(x = dist/1000, y = fit)) +
   scale_y_continuous(limits = c(0, 1)) +
-  scale_alpha_discrete(range = c(0.5, 1)) +
-  scale_color_manual(values = c("#482878FF", "#5DC863FF")) +
-  scale_fill_manual(values = c("#482878FF", "#5DC863FF")) +
-  facet_wrap(~Year) +
+  # scale_alpha_discrete(range = c(0.5, 1)) +
+  # scale_color_manual(values = c("#482878FF", "#5DC863FF")) +
+  # scale_fill_manual(values = c("#482878FF", "#5DC863FF")) +
   xlab("Distance from Shore (km)") +
   ylab("Predicted Probability of Harbor Seal Encounter (% Chance)") +
   guides(color = 'none', fill = 'none') +
@@ -327,7 +350,6 @@ HSfine_dist_plot <-
 # ggsave(paste0('products/figure3/raw/', Sys.Date(), '_HS_dist.tiff'), device = 'tiff', plot = HSfine_dist_plot, width = 5, height = 4, units = 'in', dpi = 500)
 
 # sst
-# distance form shore
 HSFine_sst <- 
   data.frame(
     sst = seq(-1.9,3.1, 0.1) %>%
@@ -344,38 +366,34 @@ HSFine_sst <-
 
 HSFine2_sst <- 
   cbind(HSFine_sst,
-        predict(HSeal_daily_beta, newdata = HSFine_sst, type = "response", se = TRUE))
+        predict(HSeal_daily_beta, newdata = HSFine_sst, type = "link", se = TRUE, exclude = c('s(year)', 's(cruise.gen)')))
 
-HSFine2_sst <- within(HSFine2_sst, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)}) %>% 
-  mutate(UL = if_else(UL >= 1, 
-                      1, 
-                      UL), 
-         LL = if_else(LL <= 0, 
-                      0, 
-                      LL))
+HSFine2_sst <- HSFine2_sst %>% 
+  dplyr::select(-c(cruise.gen, year)) %>% 
+  distinct() %>% 
+  mutate(
+    mod.fit = fit,
+    fit = boot::inv.logit(mod.fit),
+    LL = boot::inv.logit(mod.fit - (1.96 * se.fit)),
+    UL = boot::inv.logit(mod.fit + (1.96 * se.fit)))
 
-HSfine_sst_plot <- 
+# HSfine_sst_plot <- 
   HSFine2_sst %>%
   unscale('sst', ., resolution = 'fine') %>%
-  mutate(`Year` = factor(year),
-         `Survey #` = factor(cruise.gen, levels = c(1,2,3,4,5,6,7), ordered = T)) %>% 
-  filter(Year == 2017 | Year == 2020) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = sst, y = fit , ymin = LL, ymax = UL, group = `Survey #`, fill = `Year`), alpha = 0.1) + 
-  geom_line(aes(x = sst, y = fit, color = `Year`, alpha = `Survey #`)) +
-  # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('dist', ., resolution = 'fine') %>%
-  #                      mutate(dist = round(dist,0)) %>%
-  #                      group_by(dist, zone) %>%
-  #                      summarize(dist = mean(dist),
-  #                                prob = mean(PresAbs))), aes(x = dist, y = prob), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>%
+                       unscale('sst', ., resolution = 'fine') %>%
+                       group_by(zone, year) %>%
+                       summarize(sst = mean(sst),
+                                 prob = mean(PresAbs))), aes(x = sst, y = prob), shape = 21, color = 'black', fill = 'black', alpha = 0.25) +
+  geom_ribbon(aes(x = sst, y = fit , ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = sst, y = fit)) +
+  scale_x_continuous(limits = c(9.5,10.3)) +
   scale_y_continuous(limits = c(0, 1)) +
-  scale_alpha_discrete(range = c(0.5, 1)) +
-  scale_color_manual(values = c("#482878FF", "#5DC863FF")) +
-  scale_fill_manual(values = c("#482878FF", "#5DC863FF")) +
-  facet_wrap(~Year) +
+  # scale_alpha_discrete(range = c(0.5, 1)) +
+  # scale_color_manual(values = c("#482878FF", "#5DC863FF")) +
+  # scale_fill_manual(values = c("#482878FF", "#5DC863FF")) +
   xlab("Sea Surface Temperature (ºC))") +
   ylab("Predicted Probability of Harbor Seal Encounter (% Chance)") +
   guides(color = 'none', fill = 'none') +
@@ -396,30 +414,28 @@ HSFine_bathy <-
 
 HSFine2_bathy <- 
   cbind(HSFine_bathy,
-        predict(HSeal_bathy_test, newdata = HSFine_bathy, type = "response", se = TRUE))
+        predict(HSeal_bathy_test, newdata = HSFine_bathy, type = "link", se = TRUE))
 
-HSFine2_bathy <- within(HSFine2_bathy, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)}) %>% 
-  mutate(UL = if_else(UL >= 1, 
-                      1, 
-                      UL), 
-         LL = if_else(LL <= 0, 
-                      0, 
-                      LL))
+HSFine2_bathy <- 
+  HSFine2_bathy %>% 
+  mutate(
+    mod.fit = fit,
+    fit = boot::inv.logit(mod.fit),
+    LL = boot::inv.logit(mod.fit - (1.96 * se.fit)),
+    UL = boot::inv.logit(mod.fit + (1.96 * se.fit)))
 
-HSfine_bathy_plot <- 
+HSfine_bathy_plot <-
   HSFine2_bathy %>%
   unscale('bathy', ., resolution = 'fine') %>%
   ggplot() + 
   # plot effect for a low abundance cruise
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('bathy', ., resolution = 'fine') %>%
+                       mutate(dist = round(bathy,0)) %>%
+                       group_by(bathy, zone) %>%
+                       summarize(bahty = mean(bathy),
+                                 prob = mean(PresAbs))), aes(x = bathy * -1, y = prob), shape = 21, color = 'black', fill = 'black', alpha = 0.25) +
   geom_ribbon(aes(x = bathy * -1, y = fit , ymin = LL, ymax = UL), alpha = 0.1) + 
   geom_line(aes(x = bathy * -1, y = fit)) +
-  # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('dist', ., resolution = 'fine') %>%
-  #                      mutate(dist = round(dist,0)) %>%
-  #                      group_by(dist, zone) %>%
-  #                      summarize(dist = mean(dist),
-  #                                prob = mean(PresAbs))), aes(x = dist, y = prob), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
   scale_y_continuous(limits = c(0, 1)) +
   xlab("Water Depth (m))") +
   ylab("Predicted Probability of Harbor Seal Encounter (% Chance)") +
@@ -445,38 +461,34 @@ HPFine_dist <-
 
 HPFine2_dist <- 
   cbind(HPFine_dist,
-        predict(HPorp_daily_beta, newdata = HPFine_dist, type = "response", se = TRUE))
+        predict(HPorp_daily_beta, newdata = HPFine_dist, type = "link", se = TRUE, exclude = c('s(year)', 's(cruise.gen)')))
 
-HPFine2_dist <- within(HPFine2_dist, {
-  LL <- fit - (1.96 * se.fit)
-  UL <- fit + (1.96 * se.fit)}) %>% 
-  mutate(UL = if_else(UL >= 1, 
-                      1, 
-                      UL), 
-         LL = if_else(LL <= 0, 
-                      0, 
-                      LL))
+HPFine2_dist <- HPFine2_dist %>% 
+  dplyr::select(-c(year, cruise.gen)) %>% 
+  distinct() %>% 
+  mutate(
+    mod.fit = fit,
+    fit = boot::inv.logit(mod.fit),
+    LL = boot::inv.logit(mod.fit - (1.96 * se.fit)),
+    UL = boot::inv.logit(mod.fit + (1.96 * se.fit)))
 
-HPfine_dist_plot <- 
+# HPfine_dist_plot <- 
   HPFine2_dist %>%
   unscale('dist', ., resolution = 'fine') %>%
-  mutate(`Year` = factor(year),
-         `Survey #` = factor(cruise.gen, levels = c(1,2,3,4,5,6,7), ordered = T)) %>% 
-  filter(Year == 2017 | Year == 2020) %>% 
   ggplot() + 
   # plot effect for a low abundance cruise
-  geom_ribbon(aes(x = dist/1000, y = fit , ymin = LL, ymax = UL, group = `Survey #`, fill = `Year`), alpha = 0.1) + 
-  geom_line(aes(x = dist/1000, y = fit, color = `Year`, alpha = `Survey #`)) +
-  # geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('dist', ., resolution = 'fine') %>%
-  #                      mutate(dist = round(dist,0)) %>%
-  #                      group_by(dist, zone) %>%
-  #                      summarize(dist = mean(dist),
-  #                                prob = mean(PresAbs))), aes(x = dist, y = prob), shape = 21, color = 'black', fill = NA, alpha = 0.5) +
+  geom_point(data = (daily_mbm_grid %>% filter(Species_code == 'HSeal') %>% unscale('dist', ., resolution = 'fine') %>%
+                                            mutate(dist = round(dist,0)) %>%
+                                            group_by(dist, zone) %>%
+                                            summarize(dist = mean(dist),
+                                                      prob = mean(PresAbs))), aes(x = dist/1000, y = prob), shape = 21, color = 'black', fill = 'black', alpha = 0.25) +
+  geom_ribbon(aes(x = dist/1000, y = fit , ymin = LL, ymax = UL), alpha = 0.1) + 
+  geom_line(aes(x = dist/1000, y = fit)) +
   scale_y_continuous(limits = c(0, 1)) +
   scale_alpha_discrete(range = c(0.5, 1)) +
-  scale_color_manual(values = c("#482878FF", "#5DC863FF")) +
-  scale_fill_manual(values = c("#482878FF", "#5DC863FF")) +
-  facet_wrap(~Year) +
+  # scale_color_manual(values = c("#482878FF", "#5DC863FF")) +
+  # scale_fill_manual(values = c("#482878FF", "#5DC863FF")) +
+  # facet_wrap(~Year) +
   xlab("Distance from Shore (km)") +
   ylab("Predicted Probability of Harbor Porpoise Encounter (% Chance)") +
   guides(color = 'none', fill = 'none') +
