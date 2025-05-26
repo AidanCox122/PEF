@@ -87,7 +87,18 @@ daily_mbm_grid %>%
 # perform variable selection
 daily_mbm_grid %>% 
   filter(Species_code == 'HSeal') %>% 
-  mgcv::gam(PresAbs ~ s(bathy, bs = 'bs', m=c(3,1), k = 5) + s(topog, bs = 'bs', m=c(3,1), k = 5) + s(dist, bs = 'bs', m=c(3,1), k = 5) + s(tcur, bs = 'bs', m=c(3,1), k = 5) + s(phyto, bs = 'bs', m=c(3,1)) + s(sst, bs = 'bs', m=c(3,1)) + s(temp_sd, bs = 'bs', m=c(3,1)) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(year, bs="re") + s(cruise.gen, bs = "re"),
+  mgcv::gam(PresAbs ~
+              s(bathy, bs = 'bs', m=c(3,1), k = 5) +
+              s(topog, bs = 'bs', m=c(3,1), k = 5) +
+              s(dist, bs = 'bs', m=c(3,1), k = 5) +
+              s(tcur, bs = 'bs', m=c(3,1), k = 5) +
+              s(phyto, bs = 'bs', m=c(3,1)) +
+              s(sst, bs = 'bs', m=c(3,1)) +
+              s(temp_sd, bs = 'bs', m=c(3,1)) +
+              s(salt, bs = 'bs', m=c(3,1)) +
+              s(dth, bs = 'bs', m=c(3,1)) +
+              s(year, bs="re") +
+              s(cruise.gen, bs = "re"),
             data = .,
             family = 'binomial',
             select = TRUE) %>% 
@@ -98,7 +109,12 @@ daily_mbm_grid %>%
 HSeal_daily_beta <-
   daily_mbm_grid %>% 
   filter(Species_code == 'HSeal') %>% 
-  mgcv::gam(PresAbs ~ s(dist, bs = 'bs', m=c(3,1), k=5) + s(sst, bs = 'bs', m=c(3,1)) + s(year, bs="re") + s(cruise.gen, bs = "re"),
+  mgcv::gam(PresAbs ~ 
+              s(dist, bs = 'bs', m=c(3,1), k=6) +
+              # s(bathy, bs = 'bs', m=c(3,1), k=5) +
+              # s(sst, bs = 'bs', m=c(3,1)) +
+              s(year, bs="re") +
+              s(cruise.gen, bs = "re"),
             data = .,
             family = 'binomial')
 
@@ -106,14 +122,14 @@ HSeal_daily_beta <-
 summary(HSeal_daily_beta)
 
 # test the interaction term
-HSeal.interact.01 <- 
-  daily_mbm_grid %>% 
-  filter(Species_code == 'HSeal') %>% 
-  mgcv::gam(PresAbs ~ s(dist, bs = 'bs', m=c(3,1), k=5) + s(sst, bs = 'bs', m=c(3,1)) + s(dist, by = sst, bs = 'bs', m = c(3,1), k=5) + s(year, bs="re") + s(cruise.gen, bs = "re"),
-            data = .,
-            family = 'binomial')
+# HSeal.interact.01 <- 
+#   daily_mbm_grid %>% 
+#   filter(Species_code == 'HSeal') %>% 
+#   mgcv::gam(PresAbs ~ s(dist, bs = 'bs', m=c(3,1), k=5) + s(sst, bs = 'bs', m=c(3,1)) + s(dist, by = sst, bs = 'bs', m = c(3,1), k=5) + s(year, bs="re") + s(cruise.gen, bs = "re"),
+#             data = .,
+#             family = 'binomial')
 
-summary(HSeal.interact.01) # interaction not significant - ignoring
+# summary(HSeal.interact.01) # interaction not significant - ignoring
 
 # test for concurvity
 mgcv::concurvity(HSeal_daily_beta, full = T)
@@ -127,7 +143,18 @@ rm(HSeal_interact_01)
 # perform variable selection
 daily_mbm_grid %>% 
   filter(Species_code == 'HPorp') %>% 
-  mgcv::gam(PresAbs ~ s(bathy, bs = 'bs', m=c(3,1), k = 5) + s(topog, bs = 'bs', m=c(3,1), k = 5) + s(dist, bs = 'bs', m=c(3,1), k = 5) + s(tcur, bs = 'bs', m=c(3,1), k = 5) + s(phyto, bs = 'bs', m=c(3,1)) + s(sst, bs = 'bs', m=c(3,1)) + s(temp_sd, bs = 'bs', m=c(3,1)) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(year, bs="re") + s(cruise.gen, bs = "re"),
+  mgcv::gam(PresAbs ~ 
+              s(bathy, bs = 'bs', m=c(3,1), k = 5) +
+              s(topog, bs = 'bs', m=c(3,1), k = 5) +
+              s(dist, bs = 'bs', m=c(3,1), k = 5) +
+              s(tcur, bs = 'bs', m=c(3,1), k = 5) +
+              s(phyto, bs = 'bs', m=c(3,1)) +
+              s(sst, bs = 'bs', m=c(3,1)) +
+              s(temp_sd, bs = 'bs', m=c(3,1)) +
+              s(salt, bs = 'bs', m=c(3,1)) +
+              s(dth, bs = 'bs', m=c(3,1)) +
+              s(year, bs="re") +
+              s(cruise.gen, bs = "re"),
             data = .,
             family = 'binomial',
             select = TRUE) %>% 
@@ -155,7 +182,18 @@ mgcv::concurvity(HPorp_daily_beta, full = T)
 # select model terms
 daily_mbm_grid %>% 
   filter(Species_code == 'GL') %>% 
-  mgcv::gam(Count ~ s(bathy, bs = 'bs', m=c(3,1), k = 5) + s(topog, bs = 'bs', m=c(3,1), k = 5) + s(dist, bs = 'bs', m=c(3,1), k = 5) + s(tcur, bs = 'bs', m=c(3,1), k = 5) + s(phyto, bs = 'bs', m=c(3,1)) + s(sst, bs = 'bs', m=c(3,1)) + s(temp_sd, bs = 'bs', m=c(3,1)) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(year, bs="re") + s(cruise.gen, bs = "re"),
+  mgcv::gam(Count ~ 
+              s(bathy, bs = 'bs', m=c(3,1), k = 5) +
+              s(topog, bs = 'bs', m=c(3,1), k = 5) +
+              s(dist, bs = 'bs', m=c(3,1), k = 5) +
+              s(tcur, bs = 'bs', m=c(3,1), k = 5) +
+              s(phyto, bs = 'bs', m=c(3,1)) +
+              s(sst, bs = 'bs', m=c(3,1)) +
+              s(temp_sd, bs = 'bs', m=c(3,1)) +
+              s(salt, bs = 'bs', m=c(3,1)) +
+              s(dth, bs = 'bs', m=c(3,1)) +
+              s(year, bs="re") +
+              s(cruise.gen, bs = "re"),
             data = .,
             offset = log(Effort_sqkm),
             family = 'nb',
@@ -214,14 +252,21 @@ daily_mbm_grid %>%
 # define the full model, pulled out phyto and topog bc. not signif
 CoMu_daily_beta <- 
   daily_mbm_grid %>% 
-  filter(Species_code == 'GL') %>% 
-  mgcv::gam(Count ~  s(dist, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(year, bs="re"),
+  filter(Species_code == 'CoMu') %>% 
+  mgcv::gam(Count ~  
+              # s(dist, bs = 'bs', m=c(3,1), k = 5) +
+              s(bathy, bs = 'bs', m=c(3,1), k = 5) +
+              # s(phyto, bs = 'bs', m=c(3,1)) +
+              s(salt, bs = 'bs', m=c(3,1)) +
+              s(dth, bs = 'bs', m=c(3,1))+ 
+              # s(topog, bs = 'bs', m=c(3,1), k = 5) +
+              s(year, bs="re"),
             data = .,
             offset = log(Effort_sqkm),
             family = 'nb')
 
 summary(CoMu_daily_beta)
-# 42.3% dev. explained
+# 52% dev. explained
 
 # assess random effect terms
 mgcv::gam.vcomp(CoMu_daily_beta)
@@ -232,14 +277,14 @@ mgcv::vcov.gam(CoMu_daily_beta) %>% View()
 mgcv::concurvity(CoMu_daily_beta, full = T)
 # high concurvity across the board
 mgcv::concurvity(CoMu_daily_beta, full = F)
-# bathymetry and distance from shore are highly colinear
+# bathymetry and distance from shore are highly co-linear
 # removing dist has a smaller negative impact on deviance explained
 
 # test the interaction term
 CoMu.interact.01 <- 
   daily_mbm_grid %>% 
   filter(Species_code == 'CoMu') %>% 
-  mgcv::gam(Count ~  s(dist, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(dist, by = salt, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
+  mgcv::gam(Count ~  s(bathy, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(bathy, by = salt, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
             data = .,
             offset = log(Effort_sqkm),
             family = 'nb')
@@ -249,7 +294,7 @@ summary(CoMu.interact.01) # interaction significant
 CoMu.interact.02 <- 
   daily_mbm_grid %>% 
   filter(Species_code == 'CoMu') %>% 
-  mgcv::gam(Count ~  s(dist, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(dist, by = dth, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
+  mgcv::gam(Count ~  s(bathy, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(bathy, by = dth, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
             data = .,
             offset = log(Effort_sqkm),
             family = 'nb')
@@ -259,7 +304,7 @@ summary(CoMu.interact.02) # interaction not significant
 CoMu.interact.03 <- 
   daily_mbm_grid %>% 
   filter(Species_code == 'CoMu') %>% 
-  mgcv::gam(Count ~  s(dist, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(salt, by = dth, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
+  mgcv::gam(Count ~  s(bathy, bs = 'bs', m=c(3,1), k = 5) + s(salt, bs = 'bs', m=c(3,1)) + s(dth, bs = 'bs', m=c(3,1)) + s(salt, by = dth, bs = 'bs', m=c(3,1), k = 5) + s(year, bs="re"),
             data = .,
             offset = log(Effort_sqkm),
             family = 'nb')
